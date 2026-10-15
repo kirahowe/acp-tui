@@ -1,0 +1,6 @@
+{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"Working on it."}}
+{"sessionUpdate":"tool_call","toolCallId":"t1","title":"sleep 60","kind":"execute","status":"in_progress"}
+{"wait_cancel":true}
+{"stopReason":"end_turn"}
+{"sessionUpdate":"agent_message_chunk","messageId":"m2","content":{"type":"text","text":"Still here."}}
+{"stopReason":"end_turn"}

@@ -1,4 +1,7 @@
-.PHONY: check update
+.PHONY: build check update
+
+build:
+	go build -o bin/acp-tui ./cmd/acp-tui
 
 check:
 	@test -z "$$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }

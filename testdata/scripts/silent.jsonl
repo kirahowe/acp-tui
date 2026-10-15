@@ -1,0 +1,3 @@
+{"sleep_ms":2500}
+{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"Done waiting."}}
+{"stopReason":"end_turn"}

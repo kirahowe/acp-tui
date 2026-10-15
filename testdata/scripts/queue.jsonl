@@ -1,0 +1,5 @@
+{"sleep_ms":1500}
+{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"First reply."}}
+{"stopReason":"end_turn"}
+{"sessionUpdate":"agent_message_chunk","messageId":"m2","content":{"type":"text","text":"Second reply."}}
+{"stopReason":"end_turn"}

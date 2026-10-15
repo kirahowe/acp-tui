@@ -1,0 +1,9 @@
+{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"Let me look."}}
+{"sessionUpdate":"tool_call","toolCallId":"t1","title":"echo {\"text\":\"hi\"}","kind":"execute","status":"pending"}
+{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"in_progress"}
+{"sleep_ms":1500}
+{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"hi"}}]}
+{"sessionUpdate":"tool_call","toolCallId":"t2","title":"ls -la","kind":"execute","status":"in_progress"}
+{"sessionUpdate":"tool_call_update","toolCallId":"t2","status":"completed"}
+{"sessionUpdate":"agent_message_chunk","messageId":"m2","content":{"type":"text","text":"It said **hi**, and the directory is fine."}}
+{"stopReason":"end_turn"}

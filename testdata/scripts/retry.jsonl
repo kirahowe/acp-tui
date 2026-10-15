@@ -1,0 +1,4 @@
+{"retry_in_ms":3000,"title":"Rate limited, retrying","description":"rate limit exceeded"}
+{"sleep_ms":3200}
+{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"Sorry for the wait."}}
+{"stopReason":"end_turn"}
