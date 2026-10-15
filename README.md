@@ -39,8 +39,21 @@ The agent's stderr would garble the screen, so acp-tui keeps the last
 64 KiB and prints them if the agent exits on its own. `--agent-log FILE`
 writes all of it to a file.
 
-acp-tui cannot answer permission requests yet. It refuses each one and
-says so on screen.
+When the agent asks permission for a tool call, the request replaces the
+input box. It shows the tool's name and its input, indented and cut to ten
+lines, and the options the agent offered. Keys: `y` picks the first
+allow_once option, `n` the first reject_once, up/down and enter pick any
+option (the highlight starts on a reject, so a bare enter refuses), `v`
+puts the whole input into the transcript, and Esc or Ctrl-C answers
+cancelled. Keys that would approve do nothing for the first 600 ms, so a
+`y` typed for the input cannot allow a call that appeared mid-word. Other
+keys are ignored while a request waits, so no prompt can go out. Requests
+queue and are answered in order; ending the turn cancels the rest.
+
+If the agent reports session labels in `_meta["agentloop/labels"]` on tool
+calls and usage updates, the status line shows them: `[private]` in bold
+and ` contaminated ` in reverse video. Labels only accumulate during a
+session.
 
 ## How it is built
 

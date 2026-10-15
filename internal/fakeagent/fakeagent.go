@@ -10,6 +10,12 @@
 //	                                send an agentloop retry notice that
 //	                                many milliseconds ahead
 //
+//	{"request_permission": {"toolCallId": ..., "name": ..., "title": ...,
+//	  "rawInput": ..., "options": [...]}}
+//	                                ask the client; the answer is logged as
+//	                                "permission <outcome JSON>". The options
+//	                                default to allow_once and reject_once.
+//
 // So an agentloop fixture is a script as it stands. After a cancel the
 // prompt answers "cancelled" at once, and the script carries on after
 // the next stopReason or error. A prompt that finds the script used up
@@ -36,6 +42,7 @@ type step struct {
 	SleepMS       *int              `json:"sleep_ms"`
 	WaitCancel    bool              `json:"wait_cancel"`
 	RetryInMS     *int              `json:"retry_in_ms"`
+	Permission    json.RawMessage   `json:"request_permission"`
 	Title         string            `json:"title"`
 	Description   string            `json:"description"`
 	raw           json.RawMessage
@@ -144,6 +151,10 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 			if err := a.send(ctx, req.SessionId, s.raw); err != nil {
 				return acp.PromptResponse{}, err
 			}
+		case s.Permission != nil:
+			if err := a.askPermission(ctx, req.SessionId, s.Permission); err != nil {
+				return acp.PromptResponse{}, err
+			}
 		case s.RetryInMS != nil:
 			if err := a.sendRetry(ctx, req.SessionId, s); err != nil {
 				return acp.PromptResponse{}, err
@@ -202,6 +213,45 @@ func (a *Agent) send(ctx context.Context, session acp.SessionId, update json.Raw
 	conn := a.conn
 	a.mu.Unlock()
 	return conn.SessionUpdateRaw(ctx, params)
+}
+
+// askPermission sends session/request_permission and logs the outcome. A cancel
+// does not abort the wait: the test wants to see how the client answered.
+func (a *Agent) askPermission(ctx context.Context, session acp.SessionId, spec json.RawMessage) error {
+	var p struct {
+		ToolCallID string          `json:"toolCallId"`
+		Name       *string         `json:"name"`
+		Title      *string         `json:"title"`
+		RawInput   any             `json:"rawInput"`
+		Options    json.RawMessage `json:"options"`
+	}
+	if err := json.Unmarshal(spec, &p); err != nil {
+		return err
+	}
+	opts := []acp.PermissionOption{
+		{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow once", OptionId: "allow"},
+		{Kind: acp.PermissionOptionKindRejectOnce, Name: "Reject", OptionId: "reject"},
+	}
+	if p.Options != nil {
+		opts = nil
+		if err := json.Unmarshal(p.Options, &opts); err != nil {
+			return err
+		}
+	}
+	a.mu.Lock()
+	conn := a.conn
+	a.mu.Unlock()
+	resp, err := conn.RequestPermission(context.WithoutCancel(ctx), acp.RequestPermissionRequest{
+		SessionId: session,
+		Options:   opts,
+		ToolCall:  acp.ToolCallUpdate{ToolCallId: acp.ToolCallId(p.ToolCallID), Name: p.Name, Title: p.Title, RawInput: p.RawInput},
+	})
+	if err != nil {
+		return err
+	}
+	out, _ := json.Marshal(resp.Outcome)
+	a.logf("permission %s", out)
+	return nil
 }
 
 func (a *Agent) sendRetry(ctx context.Context, session acp.SessionId, s step) error {

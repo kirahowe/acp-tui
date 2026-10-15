@@ -168,7 +168,7 @@ func (h *harness) waitDone() {
 // statusLine is the screen row that holds the status.
 func statusLine(screen string) string {
 	for _, l := range strings.Split(screen, "\n") {
-		for _, w := range []string{"waiting", "thinking", "writing", "running", "retrying", "cancelling", "ready", "starting"} {
+		for _, w := range []string{"waiting", "thinking", "writing", "running", "retrying", "cancelling", "waiting for you", "ready", "starting"} {
 			if strings.Contains(l, w+" ") || strings.HasSuffix(strings.TrimSpace(l), w) {
 				return strings.TrimSpace(l)
 			}
@@ -536,5 +536,114 @@ func TestBanner(t *testing.T) {
 				checkBoxes(t, size[0]-1, t.Name())
 			})
 		}
+	}
+}
+
+// permit starts a turn that stops on a permission request and waits for
+// the request to show.
+func permit(t *testing.T, cols, rows int) *harness {
+	h := start(t, "permission.jsonl", cols, rows)
+	h.keys("go\r")
+	h.waitScreen("the request", func(s string) bool { return strings.Contains(s, "permission needed") })
+	return h
+}
+
+func (h *harness) permissionOutcome() string {
+	for _, l := range strings.Split(h.agentLog(), "\n") {
+		if rest, ok := strings.CutPrefix(l, "permission "); ok {
+			return rest
+		}
+	}
+	return ""
+}
+
+func (h *harness) waitOutcome(want string) {
+	h.t.Helper()
+	h.wait("the outcome", func() string { return h.permissionOutcome() }, func(s string) bool { return s != "" })
+	if got := h.permissionOutcome(); got != want {
+		h.t.Fatalf("outcome %s, want %s", got, want)
+	}
+}
+
+// y allows: the request shows the tool and its input, the status line
+// shows the labels as they grow, and the turn carries on.
+func TestPermissionAllow(t *testing.T) { bothSizes(t, testPermissionAllow) }
+
+func testPermissionAllow(t *testing.T, cols, rows int) {
+	h := permit(t, cols, rows)
+	scr := h.screen()
+	for _, want := range []string{"web_fetch", "https://example.com/page", "Allow once (y)", "Reject (n)"} {
+		if cols >= 80 && !strings.Contains(scr, want) {
+			t.Errorf("%q not on screen:\n%s", want, scr)
+		}
+	}
+	if st := h.waitScreen("the private badge", func(s string) bool { return strings.Contains(s, "[private]") }); !strings.Contains(st, "waiting for you") && cols >= 80 {
+		t.Errorf("status does not say it is waiting:\n%s", st)
+	}
+	time.Sleep(core.ArmDelay + 100*time.Millisecond)
+	h.keys("y")
+	h.waitOutcome(`{"optionId":"allow","outcome":"selected"}`)
+	h.waitAll("Fetched.")
+	h.waitIdle()
+	h.waitScreen("both badges", func(s string) bool {
+		st := statusLine(s)
+		return strings.Contains(st, "[private]") && strings.Contains(st, "contaminated")
+	})
+	h.waitAll("allowed: web_fetch")
+	if p := h.prompts(); len(p) != 1 || p[0] != "go" {
+		t.Fatalf("prompts %q: the y reached the input", p)
+	}
+}
+
+// Keys before the request is armed answer nothing, and nothing typed
+// while it waits reaches the input box or sends a prompt.
+func TestPermissionNoAccidents(t *testing.T) { bothSizes(t, testPermissionNoAccidents) }
+
+func testPermissionNoAccidents(t *testing.T, cols, rows int) {
+	h := permit(t, cols, rows)
+	h.keys("y\rhello\r")
+	time.Sleep(core.ArmDelay + 100*time.Millisecond)
+	if o := h.permissionOutcome(); o != "" {
+		t.Fatalf("answered before it was armed: %s", o)
+	}
+	h.keys("more text") // swallowed
+	h.keys("\r")        // enter takes the highlighted option, which is Reject
+	h.waitOutcome(`{"optionId":"reject","outcome":"selected"}`)
+	h.waitAll("Fetched.")
+	h.waitIdle()
+	if p := h.prompts(); len(p) != 1 {
+		t.Fatalf("prompts %q", p)
+	}
+	if all := h.all(); strings.Contains(all, "hello") || strings.Contains(all, "more text") {
+		t.Fatalf("typing got into the input:\n%s", all)
+	}
+	h.waitAll("rejected: web_fetch")
+}
+
+func TestPermissionEscCancels(t *testing.T) {
+	h := permit(t, 80, 24)
+	h.keys("\x1b")
+	h.waitOutcome(`{"outcome":"cancelled"}`)
+	h.waitAll("cancelled: web_fetch")
+}
+
+// Ctrl-C stops the turn and answers the request cancelled, as ACP wants.
+func TestPermissionCtrlCCancels(t *testing.T) {
+	h := permit(t, 80, 24)
+	h.keys("\x03")
+	h.waitOutcome(`{"outcome":"cancelled"}`)
+	h.wait("the cancel", h.agentLog, func(s string) bool { return strings.Contains(s, "cancel\n") })
+}
+
+// v puts the whole input into the transcript.
+func TestPermissionShowAll(t *testing.T) {
+	h := permit(t, 80, 24)
+	h.keys("v")
+	h.waitAll("  ? web_fetch")
+	if n := count(h.all(), "sending the memo"); n < 2 {
+		t.Fatalf("the input shows %d times:\n%s", n, h.all())
+	}
+	if h.permissionOutcome() != "" {
+		t.Fatal("showing it answered it")
 	}
 }

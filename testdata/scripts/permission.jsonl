@@ -1,0 +1,7 @@
+{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"I will fetch it."}}
+{"sessionUpdate":"tool_call","toolCallId":"t1","name":"web_fetch","title":"web_fetch","kind":"fetch","status":"pending","rawInput":{"url":"https://example.com/page","note":"sending the memo"},"_meta":{"agentloop/labels":["private"]}}
+{"request_permission":{"toolCallId":"t1","name":"web_fetch","title":"web_fetch","rawInput":{"url":"https://example.com/page","note":"sending the memo"}}}
+{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"page text"}}],"_meta":{"agentloop/labels":["contaminated","private"]}}
+{"sessionUpdate":"usage_update","used":10,"size":200000,"_meta":{"agentloop/labels":["contaminated","private"]}}
+{"sessionUpdate":"agent_message_chunk","messageId":"m2","content":{"type":"text","text":"Fetched."}}
+{"stopReason":"end_turn"}
