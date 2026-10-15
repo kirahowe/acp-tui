@@ -21,6 +21,49 @@ func Capabilities() acp.ClientCapabilities {
 	}
 }
 
+// Connected describes the session once initialize and session/new have
+// answered: the agent's name, title and version from agentInfo, and the
+// current model when the session has a config option of category model.
+func Connected(init acp.InitializeResponse, sess acp.NewSessionResponse, at time.Time) core.Event {
+	c := core.Connected{At: at, Model: model(sess.ConfigOptions)}
+	if info := init.AgentInfo; info != nil {
+		c.Agent, c.Version = oneLine(info.Name), oneLine(info.Version)
+		if info.Title != nil {
+			c.Title = oneLine(*info.Title)
+		}
+	}
+	return c
+}
+
+// model is the display name of the current value of the first config
+// option of category model, or "".
+func model(opts []acp.SessionConfigOption) string {
+	for _, o := range opts {
+		sel := o.Select
+		if sel == nil || sel.Category == nil || *sel.Category != acp.SessionConfigOptionCategoryModel {
+			continue
+		}
+		var choices []acp.SessionConfigSelectOption
+		if g := sel.Options.Ungrouped; g != nil {
+			choices = *g
+		}
+		if g := sel.Options.Grouped; g != nil {
+			for _, grp := range *g {
+				choices = append(choices, grp.Options...)
+			}
+		}
+		for _, c := range choices {
+			if c.Value == sel.CurrentValue && c.Name != "" {
+				return oneLine(c.Name)
+			}
+		}
+		return oneLine(string(sel.CurrentValue))
+	}
+	return ""
+}
+
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
 // Update translates one session/update notification.
 func Update(n acp.SessionNotification, at time.Time) core.Event {
 	u := n.Update
@@ -47,6 +90,8 @@ func Update(n acp.SessionNotification, at time.Time) core.Event {
 			}
 		}
 		return e
+	case u.UsageUpdate != nil:
+		return core.Usage{At: at, Used: u.UsageUpdate.Used, Size: u.UsageUpdate.Size}
 	case u.Notice != nil:
 		c := u.Notice
 		e := core.Notice{At: at, Severity: string(c.Severity), Title: c.Title, RetryAt: retryAt(c.Meta)}

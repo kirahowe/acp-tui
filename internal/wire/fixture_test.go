@@ -49,6 +49,7 @@ func replay(t *testing.T, name string, check func(line int, s core.State)) core.
 }
 
 func TestAgentloopFixtures(t *testing.T) {
+	banner := core.Entry{Kind: core.Banner, Title: "agentloop", Text: "agentloop", Final: true}
 	user := core.Entry{Kind: core.User, Text: "hi", Final: true}
 	agent := func(id, text string) core.Entry {
 		return core.Entry{Kind: core.Agent, ID: id, Text: text, Final: true}
@@ -58,21 +59,21 @@ func TestAgentloopFixtures(t *testing.T) {
 		return core.Entry{Kind: core.Tool, ID: "call_1", Title: `echo {"text":"hi"}`, Status: st, Detail: detail, Final: true}
 	}
 	cases := map[string][]core.Entry{
-		"simple_reply":       {user, agent("a3", "Hello there.")},
-		"tool_loop":          {user, agent("a3", "Let me echo that."), echo(core.OK, ""), agent("a7", "It said hi.")},
-		"retry_then_success": {user, agent("a4", "Sorry for the wait.")},
-		"model_error": {user,
+		"simple_reply":       {banner, user, agent("a3", "Hello there.")},
+		"tool_loop":          {banner, user, agent("a3", "Let me echo that."), echo(core.OK, ""), agent("a7", "It said hi.")},
+		"retry_then_success": {banner, user, agent("a4", "Sorry for the wait.")},
+		"model_error": {banner, user,
 			{Kind: core.Note, Text: "! The model call failed: unauthorized", Detail: "invalid x-api-key", Final: true},
 			note("error: unauthorized (401): invalid x-api-key")},
-		"cancelled_call": {user, agent("a3", "Running it."),
+		"cancelled_call": {banner, user, agent("a3", "Running it."),
 			echo(core.Failed, "The run stopped while this call was running, so it may or may not have taken effect. It was not run again."),
 			note("[cancelled]")},
-		"denied_call": {user, echo(core.Failed, "Echo is switched off."), agent("a6", "I was not allowed.")},
-		"held_call": {user, agent("a3", "I need to check."), echo(core.Stopped, ""),
+		"denied_call": {banner, user, echo(core.Failed, "Echo is switched off."), agent("a6", "I was not allowed.")},
+		"held_call": {banner, user, agent("a3", "I need to check."), echo(core.Stopped, ""),
 			note("error: tool calls are waiting for a decision this agent cannot ask the client for")},
-		"refusal": {user, agent("a3", "I can't help with that.\n\n"),
+		"refusal": {banner, user, agent("a3", "I can't help with that.\n\n"),
 			agent("a3", "The request was declined by the safety system."), note("[refusal]")},
-		"turn_limit": {user, echo(core.OK, ""), note("[max turn requests]")},
+		"turn_limit": {banner, user, echo(core.OK, ""), note("[max turn requests]")},
 	}
 	files, _ := filepath.Glob(filepath.Join("..", "..", "testdata", "agentloop", "*.jsonl"))
 	if len(files) != len(cases) {

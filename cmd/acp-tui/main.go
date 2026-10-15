@@ -1,6 +1,6 @@
 // Command acp-tui is a terminal chat client for an ACP agent:
 //
-//	acp-tui [--agent-log FILE] -- COMMAND [ARGS...]
+//	acp-tui [--title TITLE] [--agent-log FILE] -- COMMAND [ARGS...]
 //
 // It starts COMMAND as the agent, in the current directory. Exit status:
 // 0 after a normal quit, 1 when the agent fails to start or exits on its
@@ -26,8 +26,9 @@ func main() { os.Exit(run(os.Args[1:])) }
 func run(args []string) int {
 	fs := flag.NewFlagSet("acp-tui", flag.ContinueOnError)
 	logPath := fs.String("agent-log", "", "also write the agent's stderr to `FILE`")
+	title := fs.String("title", "", "name the session `TITLE` in the banner (default: the agent's title or name)")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "usage: acp-tui [--agent-log FILE] -- COMMAND [ARGS...]")
+		fmt.Fprintln(fs.Output(), "usage: acp-tui [--title TITLE] [--agent-log FILE] -- COMMAND [ARGS...]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -68,7 +69,7 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, "acp-tui: starting the agent:", err)
 		return 1
 	}
-	p = tea.NewProgram(ui.New(conn))
+	p = tea.NewProgram(ui.New(conn, *title))
 	close(started)
 	final, err := p.Run()
 	if err != nil {

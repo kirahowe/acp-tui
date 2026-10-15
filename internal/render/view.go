@@ -8,12 +8,20 @@ import (
 	"github.com/kirahowe/acp-tui/internal/core"
 )
 
-// View is the live part of the screen, below the scrollback: entries not
-// yet printed, queued messages, the status line, and the input box. input
-// is the input box as already drawn, one row per line. The view is at
+// Frame is the live part of the screen, below the scrollback.
+type Frame struct {
+	Content string
+	// InputX and InputY are where the input's first row starts, in
+	// columns and rows from the frame's top left, for the cursor.
+	InputX, InputY int
+}
+
+// View lays out the live part of the screen: entries not yet printed,
+// queued messages, the input box, and the status line under it. input is
+// the text area as already drawn, InputWidth(width) wide. The frame is at
 // most height-1 rows; when the entries do not fit, their top is cut and a
 // faint "… N lines above" line takes its place.
-func View(s core.State, input, hint string, now time.Time, width, height int) string {
+func View(s core.State, input, hint string, now time.Time, width, height int) Frame {
 	var prev *core.Entry
 	if s.Printed > 0 {
 		prev = &s.Entries[s.Printed-1]
@@ -29,10 +37,16 @@ func View(s core.State, input, hint string, now time.Time, width, height int) st
 		}
 		bottom = append(bottom, styled(faint, truncate("queued › "+first, width)))
 	}
-	bottom = append(bottom, StatusText(core.Status(s, now), hint, now, width))
-	if input != "" {
-		bottom = append(bottom, strings.Split(input, "\n")...)
+	bottom = append(bottom, "") // the input box stands apart from the text above
+	inputLines := strings.Split(input, "\n")
+	inputAt := len(bottom)
+	x := 0
+	if boxed(width) {
+		inputAt++ // the top border
+		x = 2
 	}
+	bottom = append(bottom, box("", inputLines, width)...)
+	bottom = append(bottom, StatusText(core.Status(s, now), hint, now, width))
 
 	rows := max(height-1, 1)
 	room := rows - len(bottom)
@@ -45,8 +59,10 @@ func View(s core.State, input, hint string, now time.Time, width, height int) st
 		}
 	}
 	all := append(live, bottom...)
+	y := len(live) + inputAt
 	if len(all) > rows {
+		y -= len(all) - rows
 		all = all[len(all)-rows:]
 	}
-	return strings.Join(all, "\n")
+	return Frame{Content: strings.Join(all, "\n"), InputX: x, InputY: max(y, 0)}
 }

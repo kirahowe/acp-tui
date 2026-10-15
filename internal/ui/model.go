@@ -53,8 +53,9 @@ type Model struct {
 	died     bool
 }
 
-// New returns the model for a conversation with conn.
-func New(conn Conn) Model {
+// New returns the model for a conversation with conn. title names the
+// session in the banner; empty means use the agent's own title or name.
+func New(conn Conn, title string) Model {
 	ta := textarea.New()
 	ta.SetStyles(textarea.Styles{})
 	ta.SetVirtualCursor(false)
@@ -71,7 +72,7 @@ func New(conn Conn) Model {
 	ta.MaxHeight = 6
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 	ta.Focus()
-	return Model{input: ta, conn: conn}
+	return Model{input: ta, conn: conn, core: core.State{Title: title}}
 }
 
 // Died reports whether the agent exited on its own, and why.
@@ -87,7 +88,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
-		m.input.SetWidth(m.w)
+		m.input.SetWidth(render.InputWidth(m.width()))
 		if !m.sized {
 			m.sized = true
 			cmds = append(cmds, tea.Tick(readyDelay, func(time.Time) tea.Msg { return readyMsg{} }))
@@ -186,14 +187,13 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 // view, then acknowledges them. Bubble Tea runs a sequence one command
 // at a time and handles each print before the next, so the ack arrives
 // after the text is in scrollback, and only then does the view drop it
-// (Bubble Tea #1736). Lines are rendered one column narrower than the
-// screen, so a wide grapheme measured differently cannot wrap (#1802).
+// (Bubble Tea #1736).
 func (m *Model) print(p core.Print, now time.Time) tea.Cmd {
 	var prev *core.Entry
 	if p.From > 0 {
 		prev = &m.core.Entries[p.From-1]
 	}
-	lines := render.Entries(prev, p.Entries, max(m.w-1, 1), now)
+	lines := render.Entries(prev, p.Entries, m.width(), now)
 	room := m.h - m.viewRows(now) - 1
 	var cmds []tea.Cmd
 	for _, chunk := range PrintChunks(lines, room) {
@@ -214,18 +214,23 @@ func (m *Model) tick() tea.Cmd {
 	return tea.Tick(tickEvery, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-func (m Model) content(now time.Time) string {
-	return render.View(m.core, m.input.View(), NewlineHint(m.caps), now, max(m.w, 1), max(m.h, 2))
+// width is the width everything is drawn at: one column narrower than
+// the screen, so a wide grapheme measured differently cannot wrap (Bubble
+// Tea #1802), and printed boxes line up with the input box.
+func (m Model) width() int { return max(m.w-1, 1) }
+
+func (m Model) frame(now time.Time) render.Frame {
+	return render.View(m.core, m.input.View(), NewlineHint(m.caps), now, m.width(), max(m.h, 2))
 }
 
-func (m Model) viewRows(now time.Time) int { return strings.Count(m.content(now), "\n") + 1 }
+func (m Model) viewRows(now time.Time) int { return strings.Count(m.frame(now).Content, "\n") + 1 }
 
 func (m Model) View() tea.View {
-	content := m.content(time.Now())
-	v := tea.NewView(content)
+	f := m.frame(time.Now())
+	v := tea.NewView(f.Content)
 	if c := m.input.Cursor(); c != nil {
-		rows := strings.Count(content, "\n") + 1
-		c.Position.Y += rows - (strings.Count(m.input.View(), "\n") + 1)
+		c.Position.X += f.InputX
+		c.Position.Y += f.InputY
 		v.Cursor = c
 	}
 	return v

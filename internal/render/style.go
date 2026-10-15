@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -90,7 +91,7 @@ func selfContained(lines []string) []string {
 }
 
 // sanitize drops control characters, including ESC, so text from the agent
-// cannot move the cursor or change styles. Newlines stay; a tab becomes a
+// cannot move the cursor or change styles, and format characters. Newlines stay; a tab becomes a
 // space.
 func sanitize(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -100,6 +101,12 @@ func sanitize(s string) string {
 		case r == '\t':
 			return ' '
 		case r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f:
+			return -1
+		case unicode.Is(unicode.Cf, r) && r != 0x200d:
+			// Format characters (bidi controls, U+0600 and the like) have
+			// no width of their own but change how their neighbours
+			// cluster, which breaks width sums. The zero-width joiner stays
+			// for emoji.
 			return -1
 		}
 		return r
@@ -151,10 +158,18 @@ func hardwrap(s string, width int) []string {
 	return strings.Split(ansi.Hardwrap(s, max(width, 1), true), "\n")
 }
 
-// truncate cuts one line to width, ending it with … when cut.
+// truncate cuts one line to width, ending it with … when cut. ansi's
+// Truncate can measure a cluster differently from StringWidth (it did
+// with "A" and U+FE0F), so the result is measured and cut again if needed.
 func truncate(s string, width int) string {
 	if ansi.StringWidth(s) <= width {
 		return s
 	}
-	return selfContained([]string{ansi.Truncate(s, width, "…")})[0]
+	for n := width; n > 0; n-- {
+		r := selfContained([]string{ansi.Truncate(s, n, "…")})[0]
+		if ansi.StringWidth(r) <= width {
+			return r
+		}
+	}
+	return ""
 }

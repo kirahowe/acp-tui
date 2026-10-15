@@ -182,6 +182,7 @@ func TestWidthBound(t *testing.T) {
 			{Kind: core.Tool, Title: text, Status: core.Running},
 			{Kind: core.Tool, Title: text, Detail: text, Status: core.Failed, Final: true},
 			{Kind: core.Note, Text: text, Detail: text, Final: true},
+			{Kind: core.Banner, Title: text, Text: text, Final: true},
 		}
 		checkWidth(t, "entries", Entries(nil, es, width, now), width)
 		l := core.StatusLine{
@@ -190,16 +191,25 @@ func TestWidthBound(t *testing.T) {
 			RetryIn: time.Duration(rapid.Int64().Draw(t, "retryIn")),
 			Elapsed: time.Duration(rapid.Int64().Draw(t, "elapsed")),
 			Queued:  rapid.IntRange(0, 3).Draw(t, "queued"),
+			Context: rapid.IntRange(0, 100).Draw(t, "context"), HasContext: rapid.Bool().Draw(t, "hasContext"),
 		}
 		checkWidth(t, "status", []string{StatusText(l, text, now, width)}, width)
 
 		s := streaming(text)
 		s, _ = core.Reduce(s, core.Submit{At: t0, Text: text})
 		height := rapid.IntRange(1, 40).Draw(t, "height")
-		view := strings.Split(View(s, "› ", text, now, width, height), "\n")
+		if rapid.Bool().Draw(t, "usage") {
+			s, _ = core.Reduce(s, core.Usage{At: t0, Used: rapid.Uint64().Draw(t, "used"), Size: rapid.Uint64().Draw(t, "size")})
+		}
+		input := truncate("› "+oneLine(text), InputWidth(width))
+		f := View(s, input, text, now, width, height)
+		view := strings.Split(f.Content, "\n")
 		checkWidth(t, "view", view, width)
 		if len(view) > max(height-1, 1) {
 			t.Fatalf("view has %d rows for height %d", len(view), height)
+		}
+		if f.InputY < 0 || f.InputY >= len(view) || f.InputX < 0 || f.InputX >= width {
+			t.Fatalf("input at (%d, %d) in a %d-row view", f.InputX, f.InputY, len(view))
 		}
 	})
 }
@@ -218,5 +228,90 @@ func TestWrapHyphensAndSpaces(t *testing.T) {
 		if w := ansi.StringWidth(l); w > 8 {
 			t.Fatalf("line %q is %d wide", l, w)
 		}
+	}
+}
+
+// A box is either whole, every row exactly the width with its corners in
+// place, or, too narrow for one, not drawn at all.
+func TestBoxNeverBroken(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		width := rapid.IntRange(1, 120).Draw(t, "width")
+		title := genText(t)
+		lines := rapid.SliceOfN(rapid.Custom(genText), 0, 4).Draw(t, "lines")
+		for i, l := range lines {
+			lines[i] = oneLine(l)
+		}
+		out := box(title, lines, width)
+		if !boxed(width) {
+			checkWidth(t, "unboxed", out, width)
+			for _, l := range out {
+				if strings.ContainsAny(ansi.Strip(l), "╭╮╰╯│") && !strings.ContainsAny(oneLine(title)+strings.Join(lines, ""), "╭╮╰╯│") {
+					t.Fatalf("a box piece at width %d: %q", width, l)
+				}
+			}
+			return
+		}
+		if len(out) != len(lines)+2 {
+			t.Fatalf("%d rows for %d lines", len(out), len(lines))
+		}
+		for i, l := range out {
+			if w := ansi.StringWidth(l); w != width {
+				t.Fatalf("row %d is %d wide, want %d: %q", i, w, width, l)
+			}
+			plain := []rune(ansi.Strip(l))
+			first, last := string(plain[0]), string(plain[len(plain)-1])
+			want := [2]string{"│", "│"}
+			switch i {
+			case 0:
+				want = [2]string{"╭", "╮"}
+			case len(out) - 1:
+				want = [2]string{"╰", "╯"}
+			}
+			if first != want[0] || last != want[1] {
+				t.Fatalf("row %d is %q", i, l)
+			}
+		}
+	})
+}
+
+// Regression: the titled top border came out one column short.
+func TestTitledBoxWidth(t *testing.T) {
+	if w := ansi.StringWidth(box("A", nil, 8)[0]); w != 8 {
+		t.Fatalf("top border is %d wide, want 8", w)
+	}
+}
+
+// Regression: a line starting with a combining mark joined the padding
+// space before it, and the row came out a column short.
+func TestBoxLineStartingWithCombiningMark(t *testing.T) {
+	if w := ansi.StringWidth(box("", []string{"\u0903"}, 8)[1]); w != 8 {
+		t.Fatalf("row is %d wide, want 8", w)
+	}
+	if w := ansi.StringWidth(box("\u0903", nil, 8)[0]); w != 8 {
+		t.Fatalf("top border is %d wide, want 8", w)
+	}
+}
+
+// Regression: U+0600 joins the character after it, so a box row holding
+// it came out a column wider than measured.
+func TestFormatCharactersDropped(t *testing.T) {
+	es := []core.Entry{{Kind: core.Banner, Title: "x", Text: "<div>\u0600 more", Final: true}}
+	checkWidthT(t, Entries(nil, es, 9, t0), 9)
+}
+
+func checkWidthT(t *testing.T, lines []string, width int) {
+	t.Helper()
+	for _, l := range lines {
+		if w := ansi.StringWidth(l); w > width {
+			t.Fatalf("line %q is %d wide, more than %d", l, w, width)
+		}
+	}
+}
+
+// Regression: ansi.Truncate kept "A" plus U+FE0F as one column, and the
+// row it went into came out a column wide.
+func TestTruncateVariationSelector(t *testing.T) {
+	if w := ansi.StringWidth(truncate("AAA\ufe0fAAAAA", 4)); w > 4 {
+		t.Fatalf("%d wide, want at most 4", w)
 	}
 }

@@ -81,11 +81,7 @@ func (a *Agent) handshake(dir string) error {
 		return err
 	}
 	a.session = sess.SessionId
-	name := ""
-	if init.AgentInfo != nil {
-		name = init.AgentInfo.Name
-	}
-	a.emit(core.Connected{At: time.Now(), Agent: name})
+	a.emit(wire.Connected(init, sess, time.Now()))
 	return nil
 }
 

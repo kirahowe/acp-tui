@@ -16,6 +16,13 @@ bin/acp-tui -- agentloop acp request.json
 Everything after `--` is the agent's command. It runs in the current
 directory, which is also the session's working directory.
 
+When the session starts, acp-tui prints a banner with the agent's name and
+version, and the model if the agent names one in its session options. The
+banner's title is `--title` if given, otherwise the title the agent reports
+about itself, otherwise its name. The input sits in a box at the bottom,
+with a status line under it showing what the agent is doing, for how long,
+and how much of its context window is in use when the agent reports that.
+
 Enter sends. Ctrl-J starts a new line in any terminal; Shift-Enter,
 Ctrl-Enter and Alt-Enter do too where the terminal reports them. Pressing
 Enter while the agent is working queues the text, and everything queued

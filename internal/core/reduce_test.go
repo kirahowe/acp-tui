@@ -74,6 +74,10 @@ func genSession(t *rapid.T) []step {
 		func() Event { return PromptFailed{At: now, Message: "boom"} },
 		func() Event { return Ignored{At: now} },
 		func() Event {
+			n := rapid.OneOf(rapid.SampledFrom([]uint64{0, 1, 15, 200000, 1<<64 - 1}), rapid.Uint64())
+			return Usage{At: now, Used: n.Draw(t, "used"), Size: n.Draw(t, "size")}
+		},
+		func() Event {
 			if rapid.IntRange(0, 4).Draw(t, "blank") == 0 {
 				return Submit{At: now, Text: rapid.SampledFrom([]string{"", " ", "\n", "\t \n"}).Draw(t, "blankText")}
 			}
@@ -456,7 +460,7 @@ func TestStillRunningToolIsStoppedAtTurnEnd(t *testing.T) {
 	s, _ := run(Connected{At: t0}, Submit{At: t0, Text: "a"},
 		ToolStarted{At: t0, ID: "c1", Title: "echo", Status: Running},
 		PromptDone{At: t0, Stop: Cancelled})
-	if tool := s.Entries[1]; tool.Status != Stopped || !tool.Final {
+	if tool := s.Entries[2]; tool.Status != Stopped || !tool.Final {
 		t.Fatalf("tool %+v", tool)
 	}
 }
@@ -464,7 +468,7 @@ func TestStillRunningToolIsStoppedAtTurnEnd(t *testing.T) {
 func TestUpdateForUnknownToolAddsIt(t *testing.T) {
 	ok := OK
 	s, _ := run(Connected{At: t0}, Submit{At: t0, Text: "a"}, ToolUpdated{At: t0, ID: "c9", Status: &ok})
-	if tool := s.Entries[1]; tool.Title != "c9" || tool.Status != OK || !tool.Final {
+	if tool := s.Entries[2]; tool.Title != "c9" || tool.Status != OK || !tool.Final {
 		t.Fatalf("tool %+v", tool)
 	}
 }
@@ -475,20 +479,76 @@ func TestNothingPrintsBeforeTheTerminalIsReady(t *testing.T) {
 		t.Fatalf("effects %#v", fx)
 	}
 	s, fx = Reduce(s, TerminalReady{At: t0})
-	if want := (Print{From: 0, To: 1, Entries: s.Entries[:1]}); !reflect.DeepEqual(fx, []Effect{want}) {
+	if want := (Print{From: 0, To: 2, Entries: s.Entries[:2]}); !reflect.DeepEqual(fx, []Effect{want}) {
 		t.Fatalf("effects %#v", fx)
 	}
 }
 
 func TestLongReplyPrintsABlockAtATime(t *testing.T) {
 	s := busy()
-	s, _ = Reduce(s, Printed{At: t0, Upto: 1})
+	s, _ = Reduce(s, Printed{At: t0, Upto: 2})
 	s, fx := Reduce(s, TextChunk{At: t0, MessageID: "a1", Text: "one\n\ntw"})
-	want := []Effect{Print{From: 1, To: 2, Entries: []Entry{{Kind: Agent, ID: "a1", Text: "one\n\n", Final: true}}}}
+	want := []Effect{Print{From: 2, To: 3, Entries: []Entry{{Kind: Agent, ID: "a1", Text: "one\n\n", Final: true}}}}
 	if !reflect.DeepEqual(fx, want) {
 		t.Fatalf("effects %#v", fx)
 	}
-	if open := s.Entries[2]; open.Text != "tw" || open.Final {
+	if open := s.Entries[3]; open.Text != "tw" || open.Final {
 		t.Fatalf("open entry %+v", open)
 	}
+}
+
+func TestBannerTitle(t *testing.T) {
+	cases := []struct {
+		shell string
+		c     Connected
+		title string
+		body  string
+	}{
+		{"relay · hub", Connected{Agent: "agentloop", Title: "relay · ops", Version: "0.3"}, "relay · hub", "agentloop 0.3"},
+		{"", Connected{Agent: "agentloop", Title: "relay · ops", Version: "0.3"}, "relay · ops", "agentloop 0.3"},
+		{"", Connected{Agent: "agentloop", Model: "claude-opus-5-5"}, "agentloop", "agentloop · claude-opus-5-5"},
+		{" ", Connected{}, "agent", ""},
+	}
+	for _, c := range cases {
+		s, _ := Reduce(State{Title: c.shell}, c.c)
+		if b := s.Entries[0]; b.Kind != Banner || b.Title != c.title || b.Text != c.body || !b.Final {
+			t.Errorf("title %q, %+v: banner %+v", c.shell, c.c, b)
+		}
+	}
+}
+
+// The banner comes before anything queued while starting, and only once.
+func TestBannerOnceBeforeQueuedText(t *testing.T) {
+	s, _ := run(Submit{At: t0, Text: "early"}, Connected{At: t0, Agent: "a"}, Connected{At: t0, Agent: "b"})
+	if len(s.Entries) != 2 || s.Entries[0].Kind != Banner || s.Entries[1].Text != "early" {
+		t.Fatalf("entries %+v", s.Entries)
+	}
+}
+
+// Context use: hidden until the agent reports a window size, then the
+// share of it in use, floored and capped at 100, with no overflow.
+func TestContextShare(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		steps := genSession(t)
+		var last *Usage
+		for _, st := range steps {
+			if u, ok := st.event.(Usage); ok && st.before.Phase != Exited {
+				last = &u
+			}
+		}
+		l := Status(final(steps), t0)
+		if last == nil || last.Size == 0 {
+			if l.HasContext {
+				t.Fatalf("context shown with no window size: %+v", l)
+			}
+			return
+		}
+		if !l.HasContext || l.Context < 0 || l.Context > 100 {
+			t.Fatalf("usage %+v gave %+v", *last, l)
+		}
+		used := min(last.Used, last.Size)
+		if used <= 1<<50 && l.Context != int(used*100/last.Size) {
+			t.Fatalf("usage %+v gave %d%%", *last, l.Context)
+		}
+	})
 }

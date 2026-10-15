@@ -75,6 +75,7 @@ func TestStatusGolden(t *testing.T) {
 		{Kind: core.StatusStarting},
 		{Kind: core.StatusIdle},
 		{Kind: core.StatusIdle, Queued: 2},
+		{Kind: core.StatusIdle, Context: 12, HasContext: true},
 		{Kind: core.StatusWaiting, Elapsed: 2*time.Minute + 10*time.Second, Quiet: 45 * time.Second},
 		{Kind: core.StatusThinking, Elapsed: 14 * time.Second},
 		{Kind: core.StatusWriting, Elapsed: 3 * time.Second, Queued: 1},
@@ -89,6 +90,10 @@ func TestStatusGolden(t *testing.T) {
 		out = append(out, StatusText(l, "shift+enter for a new line", t0, 80))
 	}
 	out = append(out, StatusText(lines[6], "", t0, 20))
+	// At 40 columns the parts that do not fit whole are left out.
+	busy := core.StatusLine{Kind: core.StatusWaiting, Elapsed: 130 * time.Second, Quiet: 45 * time.Second, Queued: 2, Context: 12, HasContext: true}
+	out = append(out, StatusText(busy, "", t0, 80), StatusText(busy, "", t0, 40))
+	out = append(out, StatusText(core.StatusLine{Kind: core.StatusIdle, Context: 12, HasContext: true}, "shift+enter for a new line", t0, 40))
 	requireGolden(t, strings.Join(out, "\n"))
 }
 
@@ -121,7 +126,10 @@ func TestViewGolden(t *testing.T) {
 	cases := map[string]core.State{"idle": ready, "busy": busy, "queued": queued, "long_block": long}
 	for name, s := range cases {
 		t.Run(name, func(t *testing.T) {
-			requireGolden(t, View(s, input, "ctrl+j for a new line", now, 60, 16))
+			for _, w := range []int{60, 40} {
+				f := View(s, input, "ctrl+j for a new line", now, w, 16)
+				t.Run(strconv.Itoa(w), func(t *testing.T) { requireGolden(t, f.Content) })
+			}
 		})
 	}
 }
@@ -170,5 +178,24 @@ func scrollback(events []core.Event, width int) string {
 			}
 		}
 	}
-	return strings.Join(out, "\n") + "\n" + strings.Repeat("~", 20) + "\n" + View(s, "› ", "", t0, width, 24)
+	return strings.Join(out, "\n") + "\n" + strings.Repeat("~", 20) + "\n" + View(s, "› ", "", t0, width, 24).Content
+}
+
+func TestBannerGolden(t *testing.T) {
+	banner := func(title, text string) core.Entry {
+		return core.Entry{Kind: core.Banner, Title: title, Text: text, Final: true}
+	}
+	es := []core.Entry{
+		banner("relay · hub", "agentloop 0.3 · claude-opus-5-5"),
+		banner("", ""),
+		banner("a title much too long to fit in the border of a narrow box", "agentloop 0.3 · a model name that is long"),
+	}
+	var out []string
+	for _, w := range []int{80, 40, 12, 7} {
+		out = append(out, "width "+strconv.Itoa(w)+":")
+		for _, e := range es {
+			out = append(out, Entries(nil, []core.Entry{e}, w, t0)...)
+		}
+	}
+	requireGolden(t, strings.Join(out, "\n"))
 }

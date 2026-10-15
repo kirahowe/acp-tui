@@ -31,7 +31,7 @@ func genKey(t *rapid.T) tea.KeyPressMsg {
 // input, every newline key gives Newline, and enter never does.
 func TestKeysNeverLeakEscapes(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		m := New(nopConn{})
+		m := New(nopConn{}, "")
 		for range rapid.IntRange(1, 20).Draw(t, "keys") {
 			k := genKey(t)
 			if Classify(k, false) == Newline && k.String() == "enter" {

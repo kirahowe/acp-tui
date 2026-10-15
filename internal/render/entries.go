@@ -27,12 +27,12 @@ func Entries(prev *core.Entry, es []core.Entry, width int, now time.Time) []stri
 }
 
 // blankBetween says whether a blank line separates two entries. A user
-// message stands apart; an agent message is separated from what came
+// message and the banner stand apart; an agent message is separated from what came
 // before it, except tool lines and notes, which sit directly above it.
 // Two blocks of one message are separated as markdown blocks are.
 func blankBetween(prev, e core.Entry) bool {
 	switch {
-	case prev.Kind == core.User || e.Kind == core.User:
+	case prev.Kind == core.User || e.Kind == core.User || prev.Kind == core.Banner:
 		return true
 	case e.Kind == core.Agent:
 		return prev.Kind == core.Agent
@@ -48,6 +48,8 @@ func entry(e core.Entry, width int, now time.Time) []string {
 		return Markdown(e.Text, width)
 	case core.Tool:
 		return []string{toolLine(e, width, now)}
+	case core.Banner:
+		return bannerLines(e, width)
 	}
 	text := e.Text
 	if e.Detail != "" {

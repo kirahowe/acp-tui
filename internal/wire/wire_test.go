@@ -123,7 +123,7 @@ func TestWireTotal(t *testing.T) {
 		"tool_call_update":    "core.ToolUpdated",
 		"notice":              "core.Notice",
 		"plan":                "core.Ignored",
-		"usage_update":        "core.Ignored",
+		"usage_update":        "core.Usage",
 	}
 	for kind, want := range kinds {
 		t.Run(kind, func(t *testing.T) {
@@ -208,7 +208,8 @@ func TestUpdate(t *testing.T) {
 		core.TextChunk{At: t0, Text: "[resource: file:///a]"})
 	ok(Update(decode(t, `{"sessionUpdate":"tool_call","toolCallId":"c","title":"t","status":"in_progress"}`), t0),
 		core.ToolStarted{At: t0, ID: "c", Title: "t", Status: core.Running})
-	ok(Update(decode(t, `{"sessionUpdate":"usage_update","used":1,"size":2}`), t0), core.Ignored{At: t0})
+	ok(Update(decode(t, `{"sessionUpdate":"usage_update","used":1,"size":2}`), t0), core.Usage{At: t0, Used: 1, Size: 2})
+	ok(Update(decode(t, `{"sessionUpdate":"plan","entries":[]}`), t0), core.Ignored{At: t0})
 
 	upd := Update(decode(t, `{"sessionUpdate":"tool_call_update","toolCallId":"c","status":"failed",
 		"content":[{"type":"content","content":{"type":"text","text":"\n  no such file  \nmore"}}]}`), t0).(core.ToolUpdated)
@@ -246,5 +247,22 @@ func TestChoosePermission(t *testing.T) {
 		if n := notice.(core.Notice); !strings.Contains(n.Title, "rm -rf") {
 			t.Errorf("notice %+v", n)
 		}
+	}
+}
+
+func TestConnected(t *testing.T) {
+	model := acp.SessionConfigOptionCategoryModel
+	title := "relay · hub"
+	opts := acp.SessionConfigSelectOptionsUngrouped{{Name: "Opus 5.5", Value: "claude-opus-5-5"}}
+	init := acp.InitializeResponse{AgentInfo: &acp.Implementation{Name: "agentloop", Title: &title, Version: "0.3\n"}}
+	sess := acp.NewSessionResponse{ConfigOptions: []acp.SessionConfigOption{{Select: &acp.SessionConfigOptionSelect{
+		Category: &model, CurrentValue: "claude-opus-5-5", Options: acp.SessionConfigSelectOptions{Ungrouped: &opts},
+	}}}}
+	want := core.Connected{At: t0, Agent: "agentloop", Title: "relay · hub", Version: "0.3", Model: "Opus 5.5"}
+	if got := Connected(init, sess, t0); got != want {
+		t.Fatalf("got %+v\nwant %+v", got, want)
+	}
+	if got := Connected(acp.InitializeResponse{}, acp.NewSessionResponse{}, t0); got != (core.Connected{At: t0}) {
+		t.Fatalf("no agentInfo: %+v", got)
 	}
 }

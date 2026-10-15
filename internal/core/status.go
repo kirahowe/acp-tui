@@ -1,6 +1,9 @@
 package core
 
-import "time"
+import (
+	"math/bits"
+	"time"
+)
 
 type StatusKind int
 
@@ -30,11 +33,22 @@ type StatusLine struct {
 	Elapsed time.Duration // since the turn started
 	Quiet   time.Duration // since the last agent event, once >= QuietAfter
 	Queued  int
+	// Context is the share of the context window in use, in percent, when
+	// HasContext: the agent has reported a window size.
+	Context    int
+	HasContext bool
 }
 
 // Status describes s at time now.
 func Status(s State, now time.Time) StatusLine {
 	l := StatusLine{Queued: len(s.Queue)}
+	if u := s.Usage; u != nil && u.Size > 0 {
+		l.HasContext = true
+		// used*100 can overflow 64 bits, so multiply into 128.
+		hi, lo := bits.Mul64(min(u.Used, u.Size), 100)
+		pct, _ := bits.Div64(hi, lo, u.Size) // hi < Size, as Used <= Size
+		l.Context = int(pct)
+	}
 	switch s.Phase {
 	case Starting:
 		l.Kind = StatusStarting

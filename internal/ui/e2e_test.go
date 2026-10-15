@@ -16,6 +16,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kirahowe/acp-tui/internal/agent"
 	"github.com/kirahowe/acp-tui/internal/core"
@@ -52,13 +53,20 @@ type harness struct {
 // start runs acp-tui against the fake agent playing script, at w×h.
 func start(t *testing.T, script string, w, h int) *harness {
 	t.Helper()
+	return startWith(t, script, w, h, "")
+}
+
+// startWith also sets acp-tui's --title and passes flags to the fake agent.
+func startWith(t *testing.T, script string, w, h int, title string, agentFlags ...string) *harness {
+	t.Helper()
 	h0 := &harness{t: t, emu: newTerminal(w, h), log: filepath.Join(t.TempDir(), "agent.log"), done: make(chan struct{})}
 	started := make(chan struct{})
 	scriptPath, err := filepath.Abs(filepath.Join("..", "..", "testdata", "scripts", script))
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn, err := agent.Start([]string{fakeAgent, "-log", h0.log, scriptPath},
+	command := append(append([]string{fakeAgent, "-log", h0.log}, agentFlags...), scriptPath)
+	conn, err := agent.Start(command,
 		t.TempDir(), io.Discard, func(e core.Event) {
 			<-started
 			h0.p.Send(ui.EventMsg{Event: e})
@@ -67,7 +75,7 @@ func start(t *testing.T, script string, w, h int) *harness {
 		t.Fatal(err)
 	}
 	h0.conn = conn
-	h0.p = tea.NewProgram(ui.New(conn), tea.WithInput(h0.emu.in), tea.WithOutput(h0.emu),
+	h0.p = tea.NewProgram(ui.New(conn, title), tea.WithInput(h0.emu.in), tea.WithOutput(h0.emu),
 		tea.WithWindowSize(w, h), tea.WithoutSignals())
 	close(started)
 	go func() { _, _ = h0.p.Run(); close(h0.done) }()
@@ -82,6 +90,7 @@ func start(t *testing.T, script string, w, h int) *harness {
 		h0.emu.close()
 	})
 	h0.waitScreen("the first frame", func(s string) bool { return strings.Contains(s, "›") })
+	lastHarness = h0
 	return h0
 }
 
@@ -182,6 +191,41 @@ func orderedIn(t *testing.T, s string, parts ...string) {
 
 func count(s, sub string) int { return strings.Count(s, sub) }
 
+// bothSizes runs a scenario at 80×24 and at 40×10, where the boxes are
+// narrow and the live view is short.
+func bothSizes(t *testing.T, test func(t *testing.T, cols, rows int)) {
+	for _, size := range [][2]int{{80, 24}, {40, 10}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			test(t, size[0], size[1])
+			checkBoxes(t, size[0]-1, t.Name())
+		})
+	}
+}
+
+var lastHarness *harness
+
+// checkBoxes asserts every box row on the terminal is whole: width wide,
+// with matching ends.
+func checkBoxes(t *testing.T, width int, name string) {
+	t.Helper()
+	if lastHarness == nil {
+		return
+	}
+	for _, l := range strings.Split(lastHarness.all(), "\n") {
+		l = strings.TrimRight(l, " ")
+		r := []rune(l)
+		if len(r) == 0 {
+			continue
+		}
+		ends := map[rune]rune{'╭': '╮', '│': '│', '╰': '╯'}
+		if end, ok := ends[r[0]]; ok {
+			if r[len(r)-1] != end || ansi.StringWidth(l) != width {
+				t.Errorf("%s: broken box row %q (%d wide, want %d)", name, l, ansi.StringWidth(l), width)
+			}
+		}
+	}
+}
+
 func TestSimpleReply(t *testing.T) {
 	h := start(t, "simple.jsonl", 80, 24)
 	h.keys("hi\r")
@@ -197,18 +241,22 @@ func TestSimpleReply(t *testing.T) {
 	if n := len(h.emu.scrollback()); n != 0 {
 		t.Fatalf("%d lines scrolled off a nearly empty screen:\n%s", n, all)
 	}
-	if first := strings.Split(h.screen(), "\n")[0]; !strings.HasPrefix(first, "› hi") {
-		t.Fatalf("first row %q", first)
+	if first := strings.Split(h.screen(), "\n")[0]; !strings.HasPrefix(first, "╭─ fakeagent ─") {
+		t.Fatalf("first row %q, want the banner", first)
 	}
 }
 
 // Tool calls show as one line each, apart from the prose, and the status
 // line names the running tool.
-func TestToolLoop(t *testing.T) {
-	h := start(t, "tool_loop.jsonl", 80, 24)
+func TestToolLoop(t *testing.T) { bothSizes(t, testToolLoop) }
+
+func testToolLoop(t *testing.T, cols, rows int) {
+	h := start(t, "tool_loop.jsonl", cols, rows)
 	h.keys("look\r")
 	mid := h.waitScreen("a running tool", func(s string) bool { return strings.Contains(s, `running echo {"text":"hi"}`) })
-	t.Logf("screen mid-turn:\n%s", strings.TrimRight(mid, "\n "))
+	_ = mid
+	time.Sleep(300 * time.Millisecond) // let the prints in flight land
+	t.Logf("screen mid-turn:\n%s", strings.TrimRight(h.screen(), "\n "))
 	h.waitAll("the directory is fine")
 	h.waitIdle()
 	all := h.all()
@@ -227,8 +275,10 @@ func TestToolLoop(t *testing.T) {
 
 // The original complaint: a silent agent looked frozen. The elapsed time
 // and the spinner keep moving while nothing arrives.
-func TestStatusMovesWhileSilent(t *testing.T) {
-	h := start(t, "silent.jsonl", 80, 24)
+func TestStatusMovesWhileSilent(t *testing.T) { bothSizes(t, testStatusMovesWhileSilent) }
+
+func testStatusMovesWhileSilent(t *testing.T, cols, rows int) {
+	h := start(t, "silent.jsonl", cols, rows)
 	h.keys("go\r")
 	first := statusLine(h.waitScreen("waiting 0s", func(s string) bool { return strings.Contains(statusLine(s), "waiting · 0s") }))
 	time.Sleep(250 * time.Millisecond)
@@ -240,8 +290,10 @@ func TestStatusMovesWhileSilent(t *testing.T) {
 	h.waitAll("Done waiting.")
 }
 
-func TestRetryCountdown(t *testing.T) {
-	h := start(t, "retry.jsonl", 80, 24)
+func TestRetryCountdown(t *testing.T) { bothSizes(t, testRetryCountdown) }
+
+func testRetryCountdown(t *testing.T, cols, rows int) {
+	h := start(t, "retry.jsonl", cols, rows)
 	h.keys("go\r")
 	h.waitScreen("retrying in 3s", func(s string) bool { return strings.Contains(s, "retrying in 3s · rate limit exceeded") })
 	h.waitScreen("retrying in 2s", func(s string) bool { return strings.Contains(s, "retrying in 2s") })
@@ -253,8 +305,10 @@ func TestRetryCountdown(t *testing.T) {
 
 // Enter pressed again and again while the agent works queues one joined
 // prompt, sent when the turn ends, and never several.
-func TestEnterWhileBusyQueuesOnePrompt(t *testing.T) {
-	h := start(t, "queue.jsonl", 80, 24)
+func TestEnterWhileBusyQueuesOnePrompt(t *testing.T) { bothSizes(t, testEnterWhileBusyQueuesOnePrompt) }
+
+func testEnterWhileBusyQueuesOnePrompt(t *testing.T, cols, rows int) {
+	h := start(t, "queue.jsonl", cols, rows)
 	h.keys("a\r")
 	h.waitScreen("busy", func(s string) bool { return strings.Contains(s, "waiting") })
 	h.keys("b\r")
@@ -272,8 +326,10 @@ func TestEnterWhileBusyQueuesOnePrompt(t *testing.T) {
 
 // Ctrl-C cancels the turn, not the agent: queued text comes back to the
 // input, and the agent answers the next prompt.
-func TestCtrlCCancelsAndAgentSurvives(t *testing.T) {
-	h := start(t, "cancel.jsonl", 80, 24)
+func TestCtrlCCancelsAndAgentSurvives(t *testing.T) { bothSizes(t, testCtrlCCancelsAndAgentSurvives) }
+
+func testCtrlCCancelsAndAgentSurvives(t *testing.T, cols, rows int) {
+	h := start(t, "cancel.jsonl", cols, rows)
 	h.keys("go\r")
 	h.waitScreen("running", func(s string) bool { return strings.Contains(s, "running sleep 60") })
 	h.keys("later\r")
@@ -325,8 +381,10 @@ func TestCtrlDQuits(t *testing.T) {
 // Every newline key adds a newline to the input and sends nothing, and no
 // escape sequence leaks as text. The original complaint was Ctrl+Enter
 // showing up as "[27;5;13~".
-func TestNewlineKeys(t *testing.T) {
-	h := start(t, "simple.jsonl", 80, 24)
+func TestNewlineKeys(t *testing.T) { bothSizes(t, testNewlineKeys) }
+
+func testNewlineKeys(t *testing.T, cols, rows int) {
+	h := start(t, "simple.jsonl", cols, rows)
 	h.waitIdle()
 	h.keys("\x1b[?1u") // claim kitty keyboard support, as Ghostty would
 	h.waitScreen("the kitty hint", func(s string) bool { return strings.Contains(s, "shift+enter for a new line") })
@@ -341,7 +399,7 @@ func TestNewlineKeys(t *testing.T) {
 	for name, seq := range keys {
 		h.keys("a" + seq + "b")
 		h.waitScreen(name+" newline", func(s string) bool {
-			return strings.Contains(s, "› a\n") && strings.Contains(s, "\n  b")
+			return strings.Contains(s, "│ › a ") && strings.Contains(s, "│   b ")
 		})
 		if got := h.prompts(); len(got) != sent {
 			t.Fatalf("%s sent a prompt: %q", name, got)
@@ -386,4 +444,32 @@ func TestLongReplyKeepsView(t *testing.T) {
 	// Regression: a chunk that was one blank line was dropped, so the
 	// paragraphs ran together.
 	orderedIn(t, all, "› go\n\nParagraph 1 has", "in it.\n\nParagraph 2 has")
+}
+
+// The banner: --title wins, then agentInfo.title, then the agent's name;
+// the body has the agent, its version, and the model when the session
+// offers one.
+func TestBanner(t *testing.T) {
+	cases := []struct {
+		name, flag, top, body string
+		agentFlags            []string
+	}{
+		{"agent title and model", "", "╭─ relay · hub ─", "│ fakeagent 0 · claude-opus-5-5 ", []string{"-title", "relay · hub", "-model", "claude-opus-5-5"}},
+		{"flag wins", "mine", "╭─ mine ─", "│ fakeagent 0 ", []string{"-title", "relay · hub"}},
+		{"name", "", "╭─ fakeagent ─", "│ fakeagent 0 ", nil},
+	}
+	for _, c := range cases {
+		for _, size := range [][2]int{{80, 24}, {40, 10}} {
+			t.Run(fmt.Sprintf("%s %dx%d", c.name, size[0], size[1]), func(t *testing.T) {
+				h := startWith(t, "simple.jsonl", size[0], size[1], c.flag, c.agentFlags...)
+				h.waitAll(c.top)
+				all := h.waitAll(c.body)
+				orderedIn(t, all, c.top, c.body, "ctrl-c cancel · ctrl-d quit", "╰─")
+				if n := count(all, "╰─"); n != 2 { // the banner, and the input box
+					t.Fatalf("%d box bottoms:\n%s", n, all)
+				}
+				checkBoxes(t, size[0]-1, t.Name())
+			})
+		}
+	}
 }

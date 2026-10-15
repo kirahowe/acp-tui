@@ -16,10 +16,17 @@ type Event interface{ at() time.Time }
 
 // Events from the agent, translated by package wire.
 type (
-	// Connected means initialize and session/new have finished.
+	// Connected means initialize and session/new have finished. Agent,
+	// Title and Version come from agentInfo; Model from a session config
+	// option of category "model". Any may be empty.
 	Connected struct {
-		At    time.Time
-		Agent string
+		At                           time.Time
+		Agent, Title, Version, Model string
+	}
+	// Usage is the agent's context window use.
+	Usage struct {
+		At         time.Time
+		Used, Size uint64
 	}
 	TextChunk struct {
 		At              time.Time
@@ -97,6 +104,7 @@ func (e PromptDone) at() time.Time    { return e.At }
 func (e PromptFailed) at() time.Time  { return e.At }
 func (e AgentExited) at() time.Time   { return e.At }
 func (e Ignored) at() time.Time       { return e.At }
+func (e Usage) at() time.Time         { return e.At }
 func (e Submit) at() time.Time        { return e.At }
 func (e Interrupt) at() time.Time     { return e.At }
 func (e EOF) at() time.Time           { return e.At }
@@ -174,6 +182,9 @@ const (
 	Agent
 	Tool
 	Note
+	// Banner is printed once, when the session starts: Title, and the
+	// agent's name, version and model in Text.
+	Banner
 )
 
 // Entry is one item of the transcript. An agent message is split into one
@@ -202,8 +213,12 @@ type Turn struct {
 }
 
 type State struct {
+	// Title, set by the shell before the first event, names the session
+	// in the banner. Empty means use the agent's own title or name.
+	Title   string
 	Phase   Phase
 	Agent   string
+	Usage   *Usage // the last context use the agent reported
 	Entries []Entry
 	Printed int      // entries [0, Printed) are in scrollback
 	Asked   int      // entries [Printed, Asked) have a Print in flight
@@ -238,7 +253,16 @@ func (r *reducer) apply(e Event) {
 		if s.Phase == Starting {
 			s.Phase = Idle
 			s.Agent = e.Agent
+			r.add(banner(s.Title, e))
 			r.sendQueue(e.At)
+		}
+	case Usage:
+		if s.Phase == Busy {
+			s.Turn.LastEvent = e.At
+			s.Turn.Retry = nil
+		}
+		if s.Phase != Exited {
+			s.Usage = &e
 		}
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:
 		if s.Phase == Busy {
@@ -448,6 +472,26 @@ func (r *reducer) send(text string, at time.Time) {
 	r.s.Phase = Busy
 	r.s.Turn = Turn{Started: at, LastEvent: at}
 	r.emit(SendPrompt{Text: text})
+}
+
+// banner names the session: the shell's title, else the agent's title,
+// else its name. The body is the agent's name and version, and the model
+// when the agent said which.
+func banner(title string, c Connected) Entry {
+	for _, t := range []string{title, c.Title, c.Agent, "agent"} {
+		if strings.TrimSpace(t) != "" {
+			title = t
+			break
+		}
+	}
+	var body []string
+	if who := strings.TrimSpace(c.Agent + " " + c.Version); who != "" {
+		body = append(body, who)
+	}
+	if c.Model != "" {
+		body = append(body, c.Model)
+	}
+	return Entry{Kind: Banner, Title: title, Text: strings.Join(body, " · "), Final: true}
 }
 
 func stopNote(r StopReason) string {

@@ -1,6 +1,6 @@
 // Command fakeagent is a scripted ACP agent for acp-tui's tests:
 //
-//	fakeagent [-log FILE] SCRIPT
+//	fakeagent [-log FILE] [-title TITLE] [-model MODEL] SCRIPT
 //
 // See package fakeagent for the script format.
 package main
@@ -20,18 +20,21 @@ import (
 
 func main() {
 	logPath := flag.String("log", "", "append each prompt and cancel to this file")
+	var info fakeagent.Info
+	flag.StringVar(&info.Title, "title", "", "the title in agentInfo")
+	flag.StringVar(&info.Model, "model", "", "offer this model as a session config option")
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: fakeagent [-log FILE] SCRIPT")
+		fmt.Fprintln(os.Stderr, "usage: fakeagent [-log FILE] [-title TITLE] [-model MODEL] SCRIPT")
 		os.Exit(2)
 	}
-	if err := run(flag.Arg(0), *logPath); err != nil {
+	if err := run(flag.Arg(0), *logPath, info); err != nil {
 		fmt.Fprintln(os.Stderr, "fakeagent:", err)
 		os.Exit(1)
 	}
 }
 
-func run(scriptPath, logPath string) error {
+func run(scriptPath, logPath string, info fakeagent.Info) error {
 	script, err := os.ReadFile(scriptPath)
 	if err != nil {
 		return err
@@ -48,7 +51,7 @@ func run(scriptPath, logPath string) error {
 		}()
 		log = f
 	}
-	a, err := fakeagent.New(script, log)
+	a, err := fakeagent.New(script, log, info)
 	if err != nil {
 		return err
 	}

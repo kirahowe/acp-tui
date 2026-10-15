@@ -3,6 +3,8 @@ package render
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/charmbracelet/x/ansi"
 	"time"
 
 	"github.com/kirahowe/acp-tui/internal/core"
@@ -11,7 +13,8 @@ import (
 // StatusText formats the status line: faint, one row, at most width wide.
 // While the agent works it starts with a spinner, so a moving spinner
 // means the TUI is alive, and "no output for" means the agent is quiet.
-// hint says how to type a new line; it is shown when idle.
+// hint says how to type a new line; it is shown when idle. Context use
+// shows once the agent has reported it.
 func StatusText(l core.StatusLine, hint string, now time.Time, width int) string {
 	var parts []string
 	add := func(s string) {
@@ -57,15 +60,23 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 	if l.Queued > 0 {
 		add(strconv.Itoa(l.Queued) + " queued")
 	}
+	if l.HasContext {
+		add(strconv.Itoa(l.Context) + "% context")
+	}
 	if l.Kind == core.StatusIdle {
 		add(hint)
 	}
-	line := lead + " "
-	for i, p := range parts {
-		if i > 0 {
-			line += " · "
+	// The first part always shows, cut if it must be. Each later part
+	// shows only if it fits whole, so a narrow terminal loses the least
+	// important ones instead of showing half a word.
+	if len(parts) == 0 {
+		parts = []string{""}
+	}
+	line := lead + " " + parts[0]
+	for _, p := range parts[1:] {
+		if next := line + " · " + p; ansi.StringWidth(next) <= width {
+			line = next
 		}
-		line += p
 	}
 	return styled(faint, truncate(line, width))
 }

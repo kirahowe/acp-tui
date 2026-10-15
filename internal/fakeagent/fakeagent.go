@@ -41,8 +41,14 @@ type step struct {
 	raw           json.RawMessage
 }
 
+// Info is what the agent says about itself: Title goes in agentInfo, and
+// Model, when set, is offered as a session config option of category
+// model.
+type Info struct{ Title, Model string }
+
 // Agent plays a script.
 type Agent struct {
+	info      Info
 	mu        sync.Mutex
 	conn      *acp.AgentSideConnection
 	log       io.Writer
@@ -52,8 +58,8 @@ type Agent struct {
 }
 
 // New parses a script. log receives one line per prompt and cancel.
-func New(script []byte, log io.Writer) (*Agent, error) {
-	a := &Agent{log: log}
+func New(script []byte, log io.Writer, info Info) (*Agent, error) {
+	a := &Agent{log: log, info: info}
 	for i, line := range strings.Split(string(script), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -75,14 +81,27 @@ func (a *Agent) logf(format string, args ...any) {
 }
 
 func (a *Agent) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
+	impl := &acp.Implementation{Name: "fakeagent", Version: "0"}
+	if a.info.Title != "" {
+		impl.Title = &a.info.Title
+	}
 	return acp.InitializeResponse{
-		AgentInfo:       &acp.Implementation{Name: "fakeagent", Version: "0"},
+		AgentInfo:       impl,
 		ProtocolVersion: acp.ProtocolVersion(acp.ProtocolVersionNumber),
 	}, nil
 }
 
 func (a *Agent) NewSession(context.Context, acp.NewSessionRequest) (acp.NewSessionResponse, error) {
-	return acp.NewSessionResponse{SessionId: "fake-session"}, nil
+	resp := acp.NewSessionResponse{SessionId: "fake-session"}
+	if a.info.Model != "" {
+		cat := acp.SessionConfigOptionCategoryModel
+		opts := acp.SessionConfigSelectOptionsUngrouped{{Name: a.info.Model, Value: acp.SessionConfigValueId(a.info.Model)}}
+		resp.ConfigOptions = []acp.SessionConfigOption{{Select: &acp.SessionConfigOptionSelect{
+			Id: "model", Name: "Model", Type: "select", Category: &cat,
+			CurrentValue: acp.SessionConfigValueId(a.info.Model), Options: acp.SessionConfigSelectOptions{Ungrouped: &opts},
+		}}}
+	}
+	return resp, nil
 }
 
 func (a *Agent) Cancel(context.Context, acp.CancelNotification) error {
