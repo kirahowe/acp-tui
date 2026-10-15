@@ -1,0 +1,6 @@
+/bin/
+/acp-tui
+*.test
+*.prof
+coverage.out
+**/testdata/rapid/

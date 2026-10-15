@@ -1,0 +1,80 @@
+package core
+
+import "time"
+
+type StatusKind int
+
+const (
+	StatusStarting StatusKind = iota
+	StatusIdle
+	StatusWaiting
+	StatusThinking
+	StatusWriting
+	StatusRunning
+	StatusRetrying
+	StatusCancelling
+	StatusExited
+)
+
+// QuietAfter is how long a busy agent can be silent before the status line
+// says so.
+const QuietAfter = 10 * time.Second
+
+// StatusLine is what the status line shows, before formatting.
+type StatusLine struct {
+	Kind    StatusKind
+	Tool    string        // the title, when one tool is running
+	Tools   int           // how many tools are running
+	RetryIn time.Duration // when Retrying
+	Reason  string        // the retry notice's title, when Retrying
+	Elapsed time.Duration // since the turn started
+	Quiet   time.Duration // since the last agent event, once >= QuietAfter
+	Queued  int
+}
+
+// Status describes s at time now.
+func Status(s State, now time.Time) StatusLine {
+	l := StatusLine{Queued: len(s.Queue)}
+	switch s.Phase {
+	case Starting:
+		l.Kind = StatusStarting
+		return l
+	case Idle:
+		l.Kind = StatusIdle
+		return l
+	case Exited:
+		l.Kind = StatusExited
+		return l
+	}
+	t := s.Turn
+	l.Elapsed = max(now.Sub(t.Started), 0)
+	if q := now.Sub(t.LastEvent); q >= QuietAfter {
+		l.Quiet = q
+	}
+	for _, e := range s.Entries[s.Asked:] { // entries before Asked are final
+		if e.Kind == Tool && e.Status == Running && !e.Final {
+			l.Tools++
+			l.Tool = e.Title
+		}
+	}
+	if l.Tools != 1 {
+		l.Tool = ""
+	}
+	switch {
+	case t.Cancelling:
+		l.Kind = StatusCancelling
+	case t.Retry != nil && t.Retry.At.After(now):
+		l.Kind = StatusRetrying
+		l.RetryIn = t.Retry.At.Sub(now)
+		l.Reason = t.Retry.Title
+	case l.Tools > 0:
+		l.Kind = StatusRunning
+	case t.Activity == Thinking:
+		l.Kind = StatusThinking
+	case t.Activity == Writing:
+		l.Kind = StatusWriting
+	default:
+		l.Kind = StatusWaiting
+	}
+	return l
+}
