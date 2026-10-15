@@ -1,10 +1,12 @@
 package render
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"pgregory.net/rapid"
@@ -205,9 +207,10 @@ func TestWidthBound(t *testing.T) {
 		f := View(s, input, text, now, width, height)
 		view := strings.Split(f.Content, "\n")
 		checkWidth(t, "view", view, width)
-		if len(view) > max(height-1, 1) {
+		if len(view) != max(height-1, 1) {
 			t.Fatalf("view has %d rows for height %d", len(view), height)
 		}
+		checkWidth(t, "print", f.Print, width)
 		if f.InputY < 0 || f.InputY >= len(view) || f.InputX < 0 || f.InputX >= width {
 			t.Fatalf("input at (%d, %d) in a %d-row view", f.InputX, f.InputY, len(view))
 		}
@@ -353,4 +356,68 @@ func TestNumberedItemAfterTextIsAList(t *testing.T) {
 	if want := "Next:\n\n3. Add one\n4. Add two"; got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
 	}
+}
+
+// P15: run as the shell runs it, with the screen height and the input
+// box changing as the reply streams, the frame sends every line of the
+// transcript to scrollback once, in order, and none it has not finished
+// with: what was printed, then what the frame still holds, is the whole
+// transcript rendered at once.
+func TestFramePrintsTranscriptOnce(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		width := rapid.IntRange(20, 80).Draw(t, "width")
+		var s core.State
+		var printed []string
+		step := func(e core.Event) {
+			s, _ = core.Reduce(s, e)
+			if !s.Ready {
+				return // the shell prints nothing before the first frame
+			}
+			height := rapid.IntRange(1, 30).Draw(t, "height")
+			input := strings.Repeat("› x\n", rapid.IntRange(0, 6).Draw(t, "inputRows")) + "› x"
+			f := View(s, input, "", t0, width, height)
+			printed = append(printed, f.Print...)
+			s, _ = core.Reduce(s, core.Printed{At: t0, Upto: f.PrintTo})
+			if s.Printed != f.PrintTo {
+				t.Fatalf("core refused the frame's cursor %+v", f.PrintTo)
+			}
+		}
+		step(core.Connected{At: t0})
+		step(core.TerminalReady{At: t0})
+		for turn := range rapid.IntRange(1, 3).Draw(t, "turns") {
+			step(core.Submit{At: t0, Text: "go"})
+			doc, _ := genDoc(t)
+			for i, chunk := range splitChunks(t, doc) {
+				if rapid.IntRange(0, 5).Draw(t, "tool") == 0 {
+					id := fmt.Sprintf("c%d.%d", turn, i)
+					ok := core.OK
+					step(core.ToolStarted{At: t0, ID: id, Title: "read", Status: core.Running})
+					step(core.ToolUpdated{At: t0, ID: id, Status: &ok})
+				}
+				step(core.TextChunk{At: t0, MessageID: fmt.Sprintf("a%d", turn), Text: chunk})
+			}
+			step(core.PromptDone{At: t0, Stop: core.EndTurn})
+		}
+		rest, _ := transcript(s, width, t0)
+		got := plainLines(append(printed, rest...))
+		want := plainLines(Entries(nil, s.Entries, width, t0))
+		if got != want {
+			t.Fatalf("printed then held:\n%s\nwhole:\n%s", got, want)
+		}
+	})
+}
+
+// splitChunks cuts s into a few pieces at random byte offsets that fall
+// on rune boundaries.
+func splitChunks(t *rapid.T, s string) []string {
+	var out []string
+	for len(s) > 0 {
+		n := rapid.IntRange(1, len(s)).Draw(t, "chunk")
+		for n < len(s) && !utf8.RuneStart(s[n]) {
+			n++
+		}
+		out = append(out, s[:n])
+		s = s[n:]
+	}
+	return out
 }

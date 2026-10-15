@@ -65,7 +65,7 @@ func Status(s State, now time.Time) StatusLine {
 	if q := now.Sub(t.LastEvent); q >= QuietAfter {
 		l.Quiet = q
 	}
-	for _, e := range s.Entries[s.Asked:] { // entries before Asked are final
+	for _, e := range s.Entries[s.Printed.Entry:] { // entries before it are final
 		if e.Kind == Tool && e.Status == Running && !e.Final {
 			l.Tools++
 			l.Tool = e.Title

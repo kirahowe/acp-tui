@@ -23,6 +23,7 @@ type terminal struct {
 	mu  sync.Mutex
 	emu *vt.Emulator
 	in  *inbox
+	out bytes.Buffer // everything the program wrote
 }
 
 func newTerminal(w, h int) *terminal {
@@ -40,6 +41,7 @@ func newTerminal(w, h int) *terminal {
 func (t *terminal) Write(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.out.Write(p)
 	if _, err := t.emu.Write(bytes.ReplaceAll(p, []byte("\n"), []byte("\r\n"))); err != nil {
 		return 0, err
 	}
@@ -51,6 +53,13 @@ func (t *terminal) String() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.emu.String()
+}
+
+// written is everything the program has written so far.
+func (t *terminal) written() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.out.String()
 }
 
 // scrollback is the lines that scrolled off the top, as text.

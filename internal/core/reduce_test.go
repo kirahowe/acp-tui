@@ -24,11 +24,10 @@ type step struct {
 // idle, responses with no prompt, duplicated responses, bogus acks.
 func genSession(t *rapid.T) []step {
 	var (
-		s       State
-		now     = t0
-		steps   []step
-		pending []int // Print.To values not yet acknowledged
-		n       int   // submissions so far, for unique texts
+		s     State
+		now   = t0
+		steps []step
+		n     int // submissions so far, for unique texts
 	)
 	str := func(label string) string {
 		return rapid.SampledFrom([]string{"", "x", "a b", "é", "世界", "\t"}).Draw(t, label)
@@ -88,12 +87,13 @@ func genSession(t *rapid.T) []step {
 		func() Event { return Tick{At: now} },
 		func() Event { return TerminalReady{At: now} },
 		func() Event {
-			if len(pending) > 0 && rapid.IntRange(0, 4).Draw(t, "bogusAck") > 0 {
-				upto := pending[0]
-				pending = pending[1:]
-				return Printed{At: now, Upto: upto}
+			// Mostly a place at or after the cursor, as the shell sends;
+			// sometimes anywhere, valid or not.
+			c := Cursor{Entry: rapid.IntRange(-2, 50).Draw(t, "entry"), Line: rapid.IntRange(-1, 3).Draw(t, "line")}
+			if rapid.IntRange(0, 4).Draw(t, "bogus") > 0 {
+				c = Cursor{Entry: rapid.IntRange(s.Printed.Entry, len(s.Entries)).Draw(t, "entry"), Line: rapid.IntRange(0, 3).Draw(t, "line")}
 			}
-			return Printed{At: now, Upto: rapid.IntRange(-2, 50).Draw(t, "upto")}
+			return Printed{At: now, Upto: c}
 		},
 	}
 	// Rare events: they end the session, so they are drawn less often.
@@ -119,11 +119,6 @@ func genSession(t *rapid.T) []step {
 			e = gens[rapid.IntRange(0, len(gens)-1).Draw(t, "kind")]()
 		}
 		after, fx := Reduce(s, e)
-		for _, f := range fx {
-			if p, ok := f.(Print); ok {
-				pending = append(pending, p.To)
-			}
-		}
 		steps = append(steps, step{before: s, after: after, event: e, effects: fx})
 		s = after
 	}
@@ -162,8 +157,11 @@ func TestReduceTotal(t *testing.T) {
 					outstanding = true
 				}
 			}
-			if !(0 <= s.Printed && s.Printed <= s.Asked && s.Asked <= len(s.Entries)) {
-				t.Fatalf("step %d: Printed %d, Asked %d, %d entries", i, s.Printed, s.Asked, len(s.Entries))
+			if p := s.Printed; p.Entry < 0 || p.Line < 0 || p.Entry > len(s.Entries) || (p.Entry == len(s.Entries) && p.Line > 0) {
+				t.Fatalf("step %d: Printed %+v with %d entries", i, p, len(s.Entries))
+			}
+			if st.after.Printed.Before(st.before.Printed) {
+				t.Fatalf("step %d: Printed went back from %+v to %+v", i, st.before.Printed, s.Printed)
 			}
 			if (s.Phase == Busy) != outstanding {
 				t.Fatalf("step %d: phase %v, prompt outstanding %v", i, s.Phase, outstanding)
@@ -182,7 +180,7 @@ func TestReduceTotal(t *testing.T) {
 					t.Fatalf("step %d: tool entry %d final %v with status %v", i, j, e.Final, e.Status)
 				}
 			}
-			if !s.Ready && s.Asked != 0 {
+			if !s.Ready && s.Printed != (Cursor{}) {
 				t.Fatalf("step %d: printed before the terminal was ready", i)
 			}
 		}
@@ -240,39 +238,26 @@ func TestQueueLossless(t *testing.T) {
 	})
 }
 
-// P4: prints are contiguous from the start, each entry is printed once,
-// and a printed entry never changes.
-func TestPrintOnceInOrder(t *testing.T) {
+// P4: everything before the print cursor is final and never changes.
+func TestPrintedNeverChanges(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		steps := genSession(t)
-		end := final(steps)
-		next := 0
-		for i, st := range steps {
-			if a := st.before.Asked; !sameEntries(st.after.Entries[:a], st.before.Entries[:a]) {
+		for i, st := range genSession(t) {
+			p := st.after.Printed
+			end := p.Entry
+			if p.Line > 0 {
+				end++
+			}
+			for j, e := range st.after.Entries[:end] {
+				if !e.Final {
+					t.Fatalf("step %d: printed entry %d is open: %+v", i, j, e)
+				}
+			}
+			b := st.before.Printed.Entry
+			if st.before.Printed.Line > 0 {
+				b++
+			}
+			if !sameEntries(st.after.Entries[:b], st.before.Entries[:b]) {
 				t.Fatalf("step %d: a printed entry changed", i)
-			}
-			prints := 0
-			for _, f := range st.effects {
-				p, ok := f.(Print)
-				if !ok {
-					continue
-				}
-				prints++
-				if p.From != next || p.To <= p.From || len(p.Entries) != p.To-p.From {
-					t.Fatalf("step %d: Print [%d, %d) with %d entries, expected to start at %d", i, p.From, p.To, len(p.Entries), next)
-				}
-				for _, e := range p.Entries {
-					if !e.Final {
-						t.Fatalf("step %d: printed an open entry %+v", i, e)
-					}
-				}
-				if !sameEntries(p.Entries, end.Entries[p.From:p.To]) {
-					t.Fatalf("step %d: printed entries changed later", i)
-				}
-				next = p.To
-			}
-			if prints > 1 {
-				t.Fatalf("step %d: %d prints from one event", i, prints)
 			}
 		}
 	})
@@ -474,26 +459,33 @@ func TestUpdateForUnknownToolAddsIt(t *testing.T) {
 }
 
 func TestNothingPrintsBeforeTheTerminalIsReady(t *testing.T) {
-	s, fx := run(Connected{At: t0}, Submit{At: t0, Text: "a"})
-	if len(fx) != 1 || s.Asked != 0 {
-		t.Fatalf("effects %#v", fx)
+	s, _ := run(Connected{At: t0}, Submit{At: t0, Text: "a"}, Printed{At: t0, Upto: Cursor{Entry: 2}})
+	if s.Printed != (Cursor{}) {
+		t.Fatalf("printed %+v before the terminal was ready", s.Printed)
 	}
-	s, fx = Reduce(s, TerminalReady{At: t0})
-	if want := (Print{From: 0, To: 2, Entries: s.Entries[:2]}); !reflect.DeepEqual(fx, []Effect{want}) {
-		t.Fatalf("effects %#v", fx)
+	s, _ = Reduce(s, TerminalReady{At: t0})
+	s, _ = Reduce(s, Printed{At: t0, Upto: Cursor{Entry: 2}})
+	if s.Printed != (Cursor{Entry: 2}) {
+		t.Fatalf("printed %+v", s.Printed)
 	}
 }
 
-func TestLongReplyPrintsABlockAtATime(t *testing.T) {
+// A final block of a reply can go to scrollback a line at a time; the
+// open block after it cannot.
+func TestOnlyFinalLinesPrint(t *testing.T) {
 	s := busy()
-	s, _ = Reduce(s, Printed{At: t0, Upto: 2})
-	s, fx := Reduce(s, TextChunk{At: t0, MessageID: "a1", Text: "one\n\ntw"})
-	want := []Effect{Print{From: 2, To: 3, Entries: []Entry{{Kind: Agent, ID: "a1", Text: "one\n\n", Final: true}}}}
-	if !reflect.DeepEqual(fx, want) {
-		t.Fatalf("effects %#v", fx)
+	s, _ = Reduce(s, TextChunk{At: t0, MessageID: "a1", Text: "one\n\ntw"})
+	s, _ = Reduce(s, Printed{At: t0, Upto: Cursor{Entry: 2, Line: 1}})
+	if want := (Cursor{Entry: 2, Line: 1}); s.Printed != want {
+		t.Fatalf("printed %+v, want %+v", s.Printed, want)
 	}
-	if open := s.Entries[3]; open.Text != "tw" || open.Final {
-		t.Fatalf("open entry %+v", open)
+	s, _ = Reduce(s, Printed{At: t0, Upto: Cursor{Entry: 3, Line: 1}})
+	if want := (Cursor{Entry: 2, Line: 1}); s.Printed != want {
+		t.Fatalf("printed into the open block: %+v", s.Printed)
+	}
+	s, _ = Reduce(s, Printed{At: t0, Upto: Cursor{Entry: 1}})
+	if want := (Cursor{Entry: 2, Line: 1}); s.Printed != want {
+		t.Fatalf("print cursor went back: %+v", s.Printed)
 	}
 }
 

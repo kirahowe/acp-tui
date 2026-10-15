@@ -28,13 +28,13 @@ func replay(t *testing.T, name string, check func(line int, s core.State)) core.
 
 	var s core.State
 	feed := func(e core.Event) {
-		var fx []core.Effect
-		s, fx = core.Reduce(s, e)
-		for _, f := range fx {
-			if p, ok := f.(core.Print); ok {
-				s, _ = core.Reduce(s, core.Printed{At: t0, Upto: p.To})
-			}
+		s, _ = core.Reduce(s, e)
+		// Print every final entry, as the shell does once they scroll away.
+		n := s.Printed.Entry
+		for n < len(s.Entries) && s.Entries[n].Final {
+			n++
 		}
+		s, _ = core.Reduce(s, core.Printed{At: t0, Upto: core.Cursor{Entry: n}})
 	}
 	feed(core.Connected{At: t0, Agent: "agentloop"})
 	feed(core.TerminalReady{At: t0})
@@ -85,8 +85,8 @@ func TestAgentloopFixtures(t *testing.T) {
 			if !reflect.DeepEqual(s.Entries, want) {
 				t.Fatalf("entries\n%#v\nwant\n%#v", s.Entries, want)
 			}
-			if s.Phase != core.Idle || s.Printed != len(s.Entries) {
-				t.Fatalf("phase %v, %d of %d entries printed", s.Phase, s.Printed, len(s.Entries))
+			if s.Phase != core.Idle || s.Printed != (core.Cursor{Entry: len(s.Entries)}) {
+				t.Fatalf("phase %v, printed to %+v of %d entries", s.Phase, s.Printed, len(s.Entries))
 			}
 		})
 	}

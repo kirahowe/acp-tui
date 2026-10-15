@@ -161,24 +161,17 @@ func TestAgentloopGolden(t *testing.T) {
 	}
 }
 
-// scrollback runs events through core, printing as the shell will, and
-// returns the scrollback, a rule, and the final live view.
+// scrollback runs events through core and lays out a 24-row screen after
+// each, as the shell does, and returns what scrolled into scrollback, a
+// rule, and the final frame.
 func scrollback(events []core.Event, width int) string {
 	var s core.State
 	var out []string
 	for _, e := range events {
-		var fx []core.Effect
-		s, fx = core.Reduce(s, e)
-		for _, f := range fx {
-			if p, ok := f.(core.Print); ok {
-				var prev *core.Entry
-				if p.From > 0 {
-					prev = &s.Entries[p.From-1]
-				}
-				out = append(out, Entries(prev, p.Entries, width, t0)...)
-				s, _ = core.Reduce(s, core.Printed{At: t0, Upto: p.To})
-			}
-		}
+		s, _ = core.Reduce(s, e)
+		f := View(s, "› ", "", t0, width, 24)
+		out = append(out, f.Print...)
+		s, _ = core.Reduce(s, core.Printed{At: t0, Upto: f.PrintTo})
 	}
 	return strings.Join(out, "\n") + "\n" + strings.Repeat("~", 20) + "\n" + View(s, "› ", "", t0, width, 24).Content
 }

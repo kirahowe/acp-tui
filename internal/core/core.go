@@ -88,10 +88,12 @@ type (
 type (
 	Tick          struct{ At time.Time }
 	TerminalReady struct{ At time.Time } // the first frame is on screen
-	Printed       struct {
+	// Printed says the shell has put everything before Upto into
+	// scrollback, or committed to.
+	Printed struct {
 		At   time.Time
-		Upto int
-	} // entries [0, Upto) are in scrollback
+		Upto Cursor
+	}
 )
 
 func (e Connected) at() time.Time     { return e.At }
@@ -118,12 +120,6 @@ type Effect interface{ effect() }
 type (
 	SendPrompt struct{ Text string }
 	SendCancel struct{}
-	// Print asks the shell to put entries [From, To) into scrollback and
-	// then send Printed{Upto: To}. Entries is a copy.
-	Print struct {
-		From, To int
-		Entries  []Entry
-	}
 	// RestoreInput puts text that was queued but never sent back into the
 	// input box, ahead of whatever is there.
 	RestoreInput struct{ Text string }
@@ -132,7 +128,6 @@ type (
 
 func (SendPrompt) effect()   {}
 func (SendCancel) effect()   {}
-func (Print) effect()        {}
 func (RestoreInput) effect() {}
 func (Quit) effect()         {}
 
@@ -212,6 +207,16 @@ type Turn struct {
 	Retry              *Retry
 }
 
+// Cursor is a place in the transcript: line Line of entry Entry, as
+// rendered with the blank line above it, if any. Entries scroll into
+// scrollback a line at a time, so a long one can be part printed.
+type Cursor struct{ Entry, Line int }
+
+// Before reports whether c comes before d.
+func (c Cursor) Before(d Cursor) bool {
+	return c.Entry < d.Entry || (c.Entry == d.Entry && c.Line < d.Line)
+}
+
 type State struct {
 	// Title, set by the shell before the first event, names the session
 	// in the banner. Empty means use the agent's own title or name.
@@ -220,8 +225,7 @@ type State struct {
 	Agent   string
 	Usage   *Usage // the last context use the agent reported
 	Entries []Entry
-	Printed int      // entries [0, Printed) are in scrollback
-	Asked   int      // entries [Printed, Asked) have a Print in flight
+	Printed Cursor   // everything before it is in scrollback
 	Turn    Turn     // meaningful only while Busy
 	Queue   []string // submitted while starting or busy, oldest first
 	Ready   bool     // the terminal has drawn its first frame
@@ -235,7 +239,6 @@ func Reduce(s State, e Event) (State, []Effect) {
 	s.Queue = append([]string(nil), s.Queue...)
 	r := &reducer{s: s}
 	r.apply(e)
-	r.print()
 	return r.s, r.fx
 }
 
@@ -336,7 +339,7 @@ func (r *reducer) apply(e Event) {
 	case TerminalReady:
 		s.Ready = true
 	case Printed:
-		if e.Upto >= s.Printed && e.Upto <= s.Asked {
+		if s.Ready && !e.Upto.Before(s.Printed) && s.printable(e.Upto) {
 			s.Printed = e.Upto
 		}
 	case Tick:
@@ -507,17 +510,20 @@ func stopNote(r StopReason) string {
 	}
 }
 
-// print asks for the longest final prefix that has not been asked for.
-func (r *reducer) print() {
-	if !r.s.Ready {
-		return
+// printable reports whether everything before c is final, so it can go
+// into scrollback.
+func (s *State) printable(c Cursor) bool {
+	if c.Entry < 0 || c.Line < 0 || c.Entry > len(s.Entries) || (c.Entry == len(s.Entries) && c.Line > 0) {
+		return false
 	}
-	end := r.s.Asked
-	for end < len(r.s.Entries) && r.s.Entries[end].Final {
+	end := c.Entry
+	if c.Line > 0 {
 		end++
 	}
-	if end > r.s.Asked {
-		r.emit(Print{From: r.s.Asked, To: end, Entries: append([]Entry(nil), r.s.Entries[r.s.Asked:end]...)})
-		r.s.Asked = end
+	for _, e := range s.Entries[s.Printed.Entry:end] {
+		if !e.Final {
+			return false
+		}
 	}
+	return true
 }

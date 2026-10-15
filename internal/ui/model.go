@@ -28,7 +28,7 @@ type EventMsg struct{ Event core.Event }
 type (
 	tickMsg    time.Time
 	readyMsg   struct{}
-	printedMsg struct{ upto int }
+	printedMsg struct{}
 )
 
 // tickEvery is how often the status line redraws while the agent works.
@@ -47,6 +47,12 @@ type Model struct {
 	conn    Conn
 	sized   bool
 	ticking bool
+	// printing is set while lines are on their way to scrollback; more
+	// wait until they land, so they arrive in order.
+	printing bool
+	// pinned is set once a first print has moved the frame to the bottom
+	// row of the screen.
+	pinned bool
 	// quitting is set once the shell begins shutting down; Died says the
 	// agent exited before that.
 	quitting bool
@@ -69,7 +75,8 @@ func New(conn Conn, title string) Model {
 	ta.Placeholder = ""
 	ta.DynamicHeight = true
 	ta.MinHeight = 1
-	ta.MaxHeight = 6
+	ta.MaxHeight = 6              // until the first size message
+	ta.MaxContentHeight = 1 << 20 // the box scrolls past MaxHeight, without a cap
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 	ta.Focus()
 	return Model{input: ta, conn: conn, core: core.State{Title: title}}
@@ -114,7 +121,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case readyMsg:
 		ev = core.TerminalReady{At: now}
 	case printedMsg:
-		ev = core.Printed{At: now, Upto: msg.upto}
+		m.printing = false
 	}
 	if ev != nil {
 		var fx []core.Effect
@@ -123,7 +130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.effect(f, now))
 		}
 	}
-	cmds = append(cmds, m.tick())
+	cmds = append(cmds, m.print(now), m.tick())
 	return m, tea.Batch(cmds...)
 }
 
@@ -167,8 +174,6 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 			text += "\n" + v
 		}
 		m.input.SetValue(text)
-	case core.Print:
-		return m.print(f, now)
 	case core.Quit:
 		if m.quitting {
 			return nil
@@ -183,24 +188,39 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 	return nil
 }
 
-// print puts entries into scrollback in chunks that each fit above the
-// view, then acknowledges them. Bubble Tea runs a sequence one command
-// at a time and handles each print before the next, so the ack arrives
-// after the text is in scrollback, and only then does the view drop it
-// (Bubble Tea #1736).
-func (m *Model) print(p core.Print, now time.Time) tea.Cmd {
-	var prev *core.Entry
-	if p.From > 0 {
-		prev = &m.core.Entries[p.From-1]
+// print puts the lines that have scrolled off the top of the frame into
+// scrollback. The frame fills all but the last row of the screen, so
+// each line is its own tea.Println (see PrintChunks). The core moves its
+// cursor at once: the frame no longer shows those lines either way.
+// Nothing is printed before the first frame is on screen. The first
+// print starts with a blank line: on a cleared screen the frame starts at
+// the top row and ends one row short of the bottom, and a print scrolls
+// it down there.
+func (m *Model) print(now time.Time) tea.Cmd {
+	if !m.core.Ready || m.printing {
+		return nil
 	}
-	lines := render.Entries(prev, p.Entries, m.width(), now)
-	room := m.h - m.viewRows(now) - 1
+	f := m.frame(now)
+	lines := f.Print
+	if len(lines) > 0 {
+		m.core, _ = core.Reduce(m.core, core.Printed{At: now, Upto: f.PrintTo})
+		if m.core.Printed != f.PrintTo {
+			lines = nil // the core refused it; printing would duplicate lines
+		}
+	}
+	if !m.pinned {
+		m.pinned = true
+		lines = append([]string{""}, lines...)
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	m.printing = true
 	var cmds []tea.Cmd
-	for _, chunk := range PrintChunks(lines, room) {
+	for _, chunk := range PrintChunks(lines, m.h-strings.Count(f.Content, "\n")-1) {
 		cmds = append(cmds, tea.Println(chunk))
 	}
-	upto := p.To
-	cmds = append(cmds, func() tea.Msg { return printedMsg{upto} })
+	cmds = append(cmds, func() tea.Msg { return printedMsg{} })
 	return tea.Sequence(cmds...)
 }
 
@@ -222,8 +242,6 @@ func (m Model) width() int { return max(m.w-1, 1) }
 func (m Model) frame(now time.Time) render.Frame {
 	return render.View(m.core, m.input.View(), NewlineHint(m.caps), now, m.width(), max(m.h, 2))
 }
-
-func (m Model) viewRows(now time.Time) int { return strings.Count(m.frame(now).Content, "\n") + 1 }
 
 func (m Model) View() tea.View {
 	f := m.frame(time.Now())

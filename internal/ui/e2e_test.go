@@ -241,8 +241,20 @@ func TestSimpleReply(t *testing.T) {
 	if n := len(h.emu.scrollback()); n != 0 {
 		t.Fatalf("%d lines scrolled off a nearly empty screen:\n%s", n, all)
 	}
-	if first := strings.Split(h.screen(), "\n")[0]; !strings.HasPrefix(first, "╭─ fakeagent ─") {
-		t.Fatalf("first row %q, want the banner", first)
+	// The input box and the status line sit at the bottom of the screen,
+	// with the transcript just above them.
+	rows := strings.Split(strings.TrimRight(h.screen(), "\n"), "\n")
+	if n := len(rows); n != 24 || !strings.Contains(rows[n-1], "ready") || !strings.HasPrefix(rows[n-2], "╰") {
+		t.Fatalf("the input box is not at the bottom:\n%s", h.screen())
+	}
+	var shown []string
+	for _, r := range rows {
+		if strings.TrimSpace(r) != "" {
+			shown = append(shown, r)
+		}
+	}
+	if !strings.HasPrefix(shown[0], "╭─ fakeagent ─") {
+		t.Fatalf("first row shown %q, want the banner", shown[0])
 	}
 }
 
@@ -270,6 +282,30 @@ func testToolLoop(t *testing.T, cols, rows int) {
 		if strings.Contains(l, "✓") && strings.Contains(l, "Let me") {
 			t.Fatalf("a tool line shares a row with prose: %q", l)
 		}
+	}
+}
+
+// A burst of fast tool calls must not flash. Bubble Tea erases and
+// redraws the whole frame whenever its height changes, and each tool
+// line used to grow the frame and then shrink it again as it moved to
+// scrollback. The frame now never changes height, so nothing is erased.
+func TestToolBurstDoesNotRedraw(t *testing.T) { bothSizes(t, testToolBurstDoesNotRedraw) }
+
+func testToolBurstDoesNotRedraw(t *testing.T, cols, rows int) {
+	h := start(t, "tool_burst.jsonl", cols, rows)
+	h.waitAll("ready")
+	before := len(h.emu.written())
+	h.keys("go\r")
+	h.waitAll("All thirty read.")
+	h.waitIdle()
+	all := h.all()
+	for i := 1; i <= 30; i++ {
+		if n := count(all, fmt.Sprintf("✓ read file%d.go", i)); n != 1 {
+			t.Fatalf("tool %d shows %d times:\n%s", i, n, all)
+		}
+	}
+	if out := h.emu.written()[before:]; strings.Contains(out, ansi.EraseScreenBelow) || strings.Contains(out, ansi.EraseEntireScreen) {
+		t.Fatalf("the frame was erased and redrawn during the turn")
 	}
 }
 

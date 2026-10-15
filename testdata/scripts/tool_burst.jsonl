@@ -1,0 +1,93 @@
+{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"Checking everything.\n\n"}}
+{"sessionUpdate":"tool_call","toolCallId":"t1","title":"read file1.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t2","title":"read file2.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t2","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t3","title":"read file3.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t3","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t4","title":"read file4.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t4","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t5","title":"read file5.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t5","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t6","title":"read file6.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t6","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t7","title":"read file7.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t7","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t8","title":"read file8.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t8","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t9","title":"read file9.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t9","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t10","title":"read file10.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t10","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t11","title":"read file11.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t11","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t12","title":"read file12.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t12","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t13","title":"read file13.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t13","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t14","title":"read file14.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t14","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t15","title":"read file15.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t15","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t16","title":"read file16.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t16","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t17","title":"read file17.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t17","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t18","title":"read file18.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t18","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t19","title":"read file19.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t19","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t20","title":"read file20.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t20","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t21","title":"read file21.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t21","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t22","title":"read file22.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t22","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t23","title":"read file23.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t23","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t24","title":"read file24.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t24","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t25","title":"read file25.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t25","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t26","title":"read file26.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t26","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t27","title":"read file27.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t27","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t28","title":"read file28.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t28","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t29","title":"read file29.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t29","status":"completed"}
+{"sessionUpdate":"tool_call","toolCallId":"t30","title":"read file30.go","kind":"read","status":"in_progress"}
+{"sleep_ms":5}
+{"sessionUpdate":"tool_call_update","toolCallId":"t30","status":"completed"}
+{"sessionUpdate":"agent_message_chunk","messageId":"m2","content":{"type":"text","text":"All thirty read."}}
+{"stopReason":"end_turn"}
