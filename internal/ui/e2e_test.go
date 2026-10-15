@@ -647,3 +647,78 @@ func TestPermissionShowAll(t *testing.T) {
 		t.Fatal("showing it answered it")
 	}
 }
+
+// bracketed is a paste as a terminal sends it.
+func bracketed(s string) string { return "\x1b[200~" + s + "\x1b[201~" }
+
+func (h *harness) resources() []string {
+	var out []string
+	for _, l := range strings.Split(h.agentLog(), "\n") {
+		if rest, ok := strings.CutPrefix(l, "resource "); ok {
+			out = append(out, rest)
+		}
+	}
+	return out
+}
+
+// A paste is held and shown as a placeholder; on send the prompt is the
+// typed text plus the paste as a resource block.
+func TestPasteGoesAsResource(t *testing.T) {
+	h := startWith(t, "simple.jsonl", 80, 24, "", "-embedded")
+	h.waitIdle()
+	h.keys("read ")
+	h.keys(bracketed("line1\nline2\nline3"))
+	h.waitScreen("the placeholder", func(s string) bool { return strings.Contains(s, "[pasted 3 lines · untrusted #1]") })
+	if strings.Contains(h.screen(), "line2") {
+		t.Fatalf("the paste is in the input:\n%s", h.screen())
+	}
+	h.keys("\r")
+	h.waitAll("Hello there.")
+	h.waitIdle()
+	if p := h.prompts(); len(p) != 1 || p[0] != "read [paste:1]" {
+		t.Fatalf("prompts %q", p)
+	}
+	want := `{"mimeType":"text/plain","text":"line1\nline2\nline3","uri":"paste:1"}`
+	if r := h.resources(); len(r) != 1 || r[0] != want {
+		t.Fatalf("resources %q, want %s", r, want)
+	}
+}
+
+// Ctrl-T arms the next paste to go in as trusted text; the status line
+// shows it, and the transcript says it was not labelled.
+func TestTrustedPaste(t *testing.T) {
+	h := startWith(t, "simple.jsonl", 80, 24, "", "-embedded")
+	h.waitIdle()
+	h.keys("\x14")
+	h.waitScreen("the armed toggle", func(s string) bool { return strings.Contains(s, "[next paste: trusted]") })
+	h.keys(bracketed("trusted text"))
+	h.waitScreen("the text", func(s string) bool {
+		return strings.Contains(s, "trusted text") && !strings.Contains(s, "[next paste: trusted]")
+	})
+	h.keys("\r")
+	h.waitAll("Hello there.")
+	h.waitIdle()
+	if p := h.prompts(); len(p) != 1 || p[0] != "trusted text" {
+		t.Fatalf("prompts %q", p)
+	}
+	if r := h.resources(); len(r) != 0 {
+		t.Fatalf("resources %q", r)
+	}
+	h.waitAll("as trusted text, not labelled")
+}
+
+// An agent that takes no embedded context gets the text in the prompt,
+// and the transcript says it was not labelled.
+func TestPasteWithoutEmbeddedContext(t *testing.T) {
+	h := start(t, "simple.jsonl", 80, 24)
+	h.waitIdle()
+	h.keys(bracketed("SECRET"))
+	h.waitScreen("the placeholder", func(s string) bool { return strings.Contains(s, "[pasted 1 line · untrusted #1]") })
+	h.keys("\r")
+	h.waitAll("Hello there.")
+	h.waitIdle()
+	if p := h.prompts(); len(p) != 1 || p[0] != "SECRET" {
+		t.Fatalf("prompts %q", p)
+	}
+	h.waitAll("not labelled untrusted")
+}

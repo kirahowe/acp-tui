@@ -89,13 +89,13 @@ func (a *Agent) handshake(dir string) error {
 	return nil
 }
 
-// Prompt sends text and, when the agent answers, emits PromptDone or
+// Prompt sends text, with atts as resources, and, when the agent answers, emits PromptDone or
 // PromptFailed. It does not block.
-func (a *Agent) Prompt(text string) {
+func (a *Agent) Prompt(text string, atts []core.Attachment) {
 	go func() {
 		resp, err := a.proc.Connection.Prompt(context.Background(), acp.PromptRequest{
 			SessionId: a.session,
-			Prompt:    []acp.ContentBlock{{Text: &acp.ContentBlockText{Type: "text", Text: text}}},
+			Prompt:    wire.PromptBlocks(text, atts),
 		})
 		a.emit(wire.Response(resp, err, time.Now()))
 	}()

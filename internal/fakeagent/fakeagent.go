@@ -48,10 +48,13 @@ type step struct {
 	raw           json.RawMessage
 }
 
-// Info is what the agent says about itself: Title goes in agentInfo, and
+// Info is what the agent says about itself: Title goes in agentInfo,
 // Model, when set, is offered as a session config option of category
-// model.
-type Info struct{ Title, Model string }
+// model, and Embedded advertises promptCapabilities.embeddedContext.
+type Info struct {
+	Title, Model string
+	Embedded     bool
+}
 
 // Agent plays a script.
 type Agent struct {
@@ -95,6 +98,9 @@ func (a *Agent) Initialize(context.Context, acp.InitializeRequest) (acp.Initiali
 	return acp.InitializeResponse{
 		AgentInfo:       impl,
 		ProtocolVersion: acp.ProtocolVersion(acp.ProtocolVersionNumber),
+		AgentCapabilities: acp.AgentCapabilities{
+			PromptCapabilities: acp.PromptCapabilities{EmbeddedContext: a.info.Embedded},
+		},
 	}, nil
 }
 
@@ -123,14 +129,26 @@ func (a *Agent) Cancel(context.Context, acp.CancelNotification) error {
 }
 
 func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptResponse, error) {
-	var text []string
+	var text, resources []string
 	for _, b := range req.Prompt {
 		if b.Text != nil {
 			text = append(text, b.Text.Text)
 		}
+		if r := b.Resource; r != nil && r.Resource.TextResourceContents != nil {
+			t := r.Resource.TextResourceContents
+			mime := ""
+			if t.MimeType != nil {
+				mime = *t.MimeType
+			}
+			res, _ := json.Marshal(map[string]string{"uri": t.Uri, "mimeType": mime, "text": t.Text})
+			resources = append(resources, string(res))
+		}
 	}
 	prompt, _ := json.Marshal(strings.Join(text, ""))
 	a.logf("prompt %s", prompt)
+	for _, r := range resources {
+		a.logf("resource %s", r)
+	}
 
 	cancelled := make(chan struct{})
 	a.mu.Lock()

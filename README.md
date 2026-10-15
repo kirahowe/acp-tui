@@ -67,8 +67,32 @@ While the session is contaminated, URLs in what the agent writes (replies,
 notices, tool names, arguments and output) show defanged, as
 `hxxps://host[.]tld/path`, so a click cannot carry data out. acp-tui never
 writes OSC 8 hyperlinks. The request box shows its input exactly, URLs
-included. acp-tui sends only text prompts; it never sends resource or
-resource_link blocks, and a paste while a request waits is dropped.
+included. A paste while a request waits is dropped. acp-tui never sends
+`resource_link` blocks.
+
+## Pasting marks the conversation untrusted
+
+A pasted email or web page is text an outsider may have written, and
+pasting it is the usual way that text reaches the agent. So acp-tui does
+not type a paste into the prompt. A bracketed paste is held, and the input
+shows a placeholder such as `[pasted 42 lines · untrusted #1]`, even for a
+single line: a short paste can carry an injected instruction as well as a
+long one. When you send, the prompt is the text you typed, with each
+placeholder replaced by a reference like `[paste:1]`, plus one embedded
+`resource` block per paste (text/plain, uri `paste:1`). agentloop labels a
+session `contaminated` when it receives a resource block, which is what
+makes egress need your approval from then on. Delete a placeholder from
+the input and that paste is not sent. A terminal that does not do
+bracketed paste types the text in as keys, and acp-tui cannot tell.
+
+To paste one block as trusted text, press Ctrl-T first. The status line
+shows `[next paste: trusted]`, the next paste goes into the input as plain
+text, the transcript notes that it was not labelled, and the toggle
+resets. Ctrl-T again disarms it.
+
+If the agent does not advertise `promptCapabilities.embeddedContext`, a
+paste cannot be labelled. It goes in the prompt as plain text and the
+transcript warns that it was not labelled untrusted.
 
 ## How it is built
 

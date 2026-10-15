@@ -7,6 +7,7 @@
 package core
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -22,6 +23,10 @@ type (
 	Connected struct {
 		At                           time.Time
 		Agent, Title, Version, Model string
+		// Embedded says the agent takes embedded context in a prompt
+		// (promptCapabilities.embeddedContext), so a paste can go as a
+		// labelled resource.
+		Embedded bool
 	}
 	// Usage is the agent's context window use, and what the session has
 	// cost so far when the agent says. Size 0 means the window is unknown.
@@ -127,7 +132,11 @@ func (e Printed) at() time.Time       { return e.At }
 type Effect interface{ effect() }
 
 type (
-	SendPrompt struct{ Text string }
+	// SendPrompt sends a prompt: the text, and the pastes as resources.
+	SendPrompt struct {
+		Text        string
+		Attachments []Attachment
+	}
 	SendCancel struct{}
 	// RestoreInput puts text that was queued but never sent back into the
 	// input box, ahead of whatever is there.
@@ -279,6 +288,14 @@ type State struct {
 	// first; the first is on offer and Pick is its highlighted option.
 	Asks []Permission
 	Pick int
+	// Embedded says the agent takes embedded context. Pastes holds the
+	// pastes whose placeholders may still be in the input, or in a queued
+	// message; NextPaste numbers them. TrustNext says the next paste goes
+	// in as trusted text.
+	Embedded  bool
+	Pastes    []Paste
+	NextPaste int
+	TrustNext bool
 }
 
 // Reduce applies one event. It never mutates s's slices in place, so a
@@ -292,6 +309,7 @@ func Reduce(s State, e Event) (State, []Effect) {
 	}
 	s.Queue = append([]string(nil), s.Queue...)
 	s.Asks = append([]Permission(nil), s.Asks...)
+	s.Pastes = append([]Paste(nil), s.Pastes...)
 	r := &reducer{s: s}
 	r.apply(e)
 	return r.s, r.fx
@@ -310,6 +328,7 @@ func (r *reducer) apply(e Event) {
 	case Connected:
 		if s.Phase == Starting {
 			s.Phase = Idle
+			s.Embedded = e.Embedded
 			s.Agent = e.Agent
 			r.add(banner(s.Title, e))
 			r.sendQueue(e.At)
@@ -326,6 +345,10 @@ func (r *reducer) apply(e Event) {
 				s.Spend = &c
 			}
 		}
+	case Pasted:
+		r.pasted(e)
+	case ToggleTrustedPaste:
+		s.TrustNext = !s.TrustNext
 	case LabelsSeen, PermissionAsked, PermissionMove, PermissionConfirm, PermissionQuick, PermissionCancel, PermissionShowAll:
 		r.permission(e)
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:
@@ -603,7 +626,11 @@ func (r *reducer) send(text string, at time.Time) {
 	r.add(Entry{Kind: User, Text: text, Final: true})
 	r.s.Phase = Busy
 	r.s.Turn = Turn{Started: at, LastEvent: at}
-	r.emit(SendPrompt{Text: text})
+	sent, atts, inlined := r.resolve(text)
+	if inlined > 0 {
+		r.add(Entry{Kind: Note, Text: fmt.Sprintf("! %d paste(s) went in as plain text: the agent takes no attachments, so they were not labelled untrusted", inlined), Final: true})
+	}
+	r.emit(SendPrompt{Text: sent, Attachments: atts})
 }
 
 // banner names the session: the shell's title, else the agent's title,

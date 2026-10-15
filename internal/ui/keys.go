@@ -19,6 +19,7 @@ const (
 	Interrupt                 // Ctrl-C
 	EOF                       // Ctrl-D on an empty input
 	ShowTools                 // Ctrl-O: the latest tool calls in full
+	TrustPaste                // Ctrl-T: the next paste goes in as trusted text
 )
 
 // Classify decides what a key press does. It is pure.
@@ -37,6 +38,8 @@ func Classify(k tea.KeyPressMsg, inputEmpty bool) Action {
 		return Interrupt
 	case "ctrl+o":
 		return ShowTools
+	case "ctrl+t":
+		return TrustPaste
 	case "ctrl+d":
 		if inputEmpty {
 			return EOF

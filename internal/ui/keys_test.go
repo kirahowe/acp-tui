@@ -14,10 +14,10 @@ import (
 
 type nopConn struct{}
 
-func (nopConn) Prompt(string)                {}
-func (nopConn) Cancel()                      {}
-func (nopConn) Answer(core.AnswerPermission) {}
-func (nopConn) Shutdown()                    {}
+func (nopConn) Prompt(string, []core.Attachment) {}
+func (nopConn) Cancel()                          {}
+func (nopConn) Answer(core.AnswerPermission)     {}
+func (nopConn) Shutdown()                        {}
 
 func genKey(t *rapid.T) tea.KeyPressMsg {
 	code := rapid.OneOf(

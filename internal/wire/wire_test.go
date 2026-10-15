@@ -305,3 +305,49 @@ func TestConnected(t *testing.T) {
 		t.Fatalf("no agentInfo: %+v", got)
 	}
 }
+
+func TestPromptBlocks(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		text := rapid.String().Draw(t, "text")
+		var atts []core.Attachment
+		for i := range rapid.IntRange(0, 4).Draw(t, "n") {
+			atts = append(atts, core.Attachment{URI: fmt.Sprintf("paste:%d", i+1), Text: rapid.String().Draw(t, "paste")})
+		}
+		blocks := PromptBlocks(text, atts)
+		if len(blocks) != 1+len(atts) || blocks[0].Text == nil || blocks[0].Text.Text != text {
+			t.Fatalf("blocks %+v", blocks)
+		}
+		for i, a := range atts {
+			// As the agent receives it: through JSON.
+			b, err := json.Marshal(blocks[i+1])
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got acp.ContentBlock
+			if err := json.Unmarshal(b, &got); err != nil {
+				t.Fatalf("%s: %v", b, err)
+			}
+			r := got.Resource
+			if r == nil || r.Type != "resource" || r.Resource.TextResourceContents == nil {
+				t.Fatalf("not an embedded text resource: %s", b)
+			}
+			c := r.Resource.TextResourceContents
+			if c.Uri != a.URI || c.Text != a.Text || c.MimeType == nil || *c.MimeType != "text/plain" {
+				t.Fatalf("resource %+v for %+v", c, a)
+			}
+			if got.ResourceLink != nil {
+				t.Fatalf("a resource_link block: %s", b)
+			}
+		}
+	})
+}
+
+func TestConnectedEmbedded(t *testing.T) {
+	init := acp.InitializeResponse{AgentCapabilities: acp.AgentCapabilities{PromptCapabilities: acp.PromptCapabilities{EmbeddedContext: true}}}
+	if c := Connected(init, acp.NewSessionResponse{}, t0).(core.Connected); !c.Embedded {
+		t.Error("embeddedContext not read")
+	}
+	if c := Connected(acp.InitializeResponse{}, acp.NewSessionResponse{}, t0).(core.Connected); c.Embedded {
+		t.Error("embedded without the capability")
+	}
+}

@@ -85,7 +85,7 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 	if len(parts) == 0 {
 		parts = []string{""}
 	}
-	line := lead + " " + badges(l.Labels) + parts[0]
+	line := lead + " " + badges(l) + parts[0]
 	for _, p := range parts[1:] {
 		if next := line + " · " + p; ansi.StringWidth(next) <= width {
 			line = next
@@ -98,8 +98,12 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 // always on screen: private in bold, contaminated in reverse video, which
 // is the one that must not be missed. Each returns to faint, the style the
 // whole line is in, rather than resetting.
-func badges(l core.Labels) string {
+func badges(sl core.StatusLine) string {
+	l := sl.Labels
 	var b string
+	if sl.TrustNext {
+		b += sgr(bold) + "[next paste: trusted]" + sgr(faint) + " "
+	}
 	if l.Private {
 		b += sgr(bold) + "[private]" + sgr(faint) + " "
 	}

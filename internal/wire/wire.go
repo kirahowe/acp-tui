@@ -25,7 +25,7 @@ func Capabilities() acp.ClientCapabilities {
 // answered: the agent's name, title and version from agentInfo, and the
 // current model when the session has a config option of category model.
 func Connected(init acp.InitializeResponse, sess acp.NewSessionResponse, at time.Time) core.Event {
-	c := core.Connected{At: at, Model: model(sess.ConfigOptions)}
+	c := core.Connected{At: at, Model: model(sess.ConfigOptions), Embedded: init.AgentCapabilities.PromptCapabilities.EmbeddedContext}
 	if info := init.AgentInfo; info != nil {
 		c.Agent, c.Version = oneLine(info.Name), oneLine(info.Version)
 		if info.Title != nil {
@@ -33,6 +33,19 @@ func Connected(init acp.InitializeResponse, sess acp.NewSessionResponse, at time
 		}
 	}
 	return c
+}
+
+// PromptBlocks is the content of a session/prompt: the text, then each
+// paste as an embedded text resource, uri paste:N, mime type text/plain.
+func PromptBlocks(text string, atts []core.Attachment) []acp.ContentBlock {
+	blocks := []acp.ContentBlock{{Text: &acp.ContentBlockText{Type: "text", Text: text}}}
+	for _, a := range atts {
+		mime := "text/plain"
+		blocks = append(blocks, acp.ResourceBlock(acp.EmbeddedResourceResource{
+			TextResourceContents: &acp.TextResourceContents{Uri: a.URI, MimeType: &mime, Text: a.Text},
+		}))
+	}
+	return blocks
 }
 
 // model is the display name of the current value of the first config
