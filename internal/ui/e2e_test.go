@@ -273,6 +273,9 @@ func testToolLoop(t *testing.T, cols, rows int) {
 	h.waitIdle()
 	all := h.all()
 	orderedIn(t, all, "› look", "Let me look.", `✓ echo {"text":"hi"}`, "✓ ls -la", "It said hi, and the directory is fine.")
+	if st := statusLine(h.screen()); !strings.Contains(st, "12% context · $0.03") {
+		t.Fatalf("status %q, want the context use and the spend", st)
+	}
 	for _, line := range []string{`✓ echo {"text":"hi"}`, "✓ ls -la"} {
 		if n := count(all, line); n != 1 {
 			t.Fatalf("%q appears %d times:\n%s", line, n, all)

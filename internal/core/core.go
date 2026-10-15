@@ -23,10 +23,12 @@ type (
 		At                           time.Time
 		Agent, Title, Version, Model string
 	}
-	// Usage is the agent's context window use.
+	// Usage is the agent's context window use, and what the session has
+	// cost so far when the agent says. Size 0 means the window is unknown.
 	Usage struct {
 		At         time.Time
 		Used, Size uint64
+		Cost       *Cost
 	}
 	TextChunk struct {
 		At              time.Time
@@ -195,6 +197,12 @@ type Entry struct {
 	Final  bool   // nothing will change it again
 }
 
+// Cost is an amount of money: the session's spend so far.
+type Cost struct {
+	Amount   float64
+	Currency string // ISO 4217, such as USD
+}
+
 type Retry struct {
 	At     time.Time
 	Reason string // the notice's description, else its title
@@ -224,6 +232,7 @@ type State struct {
 	Phase   Phase
 	Agent   string
 	Usage   *Usage // the last context use the agent reported
+	Spend   *Cost  // the last session cost the agent reported
 	Entries []Entry
 	Printed Cursor   // everything before it is in scrollback
 	Turn    Turn     // meaningful only while Busy
@@ -266,6 +275,10 @@ func (r *reducer) apply(e Event) {
 		}
 		if s.Phase != Exited {
 			s.Usage = &e
+			if e.Cost != nil {
+				c := *e.Cost
+				s.Spend = &c
+			}
 		}
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:
 		if s.Phase == Busy {

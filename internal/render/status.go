@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 
 	"github.com/charmbracelet/x/ansi"
@@ -14,7 +15,7 @@ import (
 // While the agent works it starts with a spinner, so a moving spinner
 // means the TUI is alive, and "no output for" means the agent is quiet.
 // hint says how to type a new line; it is shown when idle. Context use
-// shows once the agent has reported it.
+// and spend show once the agent has reported them.
 func StatusText(l core.StatusLine, hint string, now time.Time, width int) string {
 	var parts []string
 	add := func(s string) {
@@ -63,6 +64,9 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 	if l.HasContext {
 		add(strconv.Itoa(l.Context) + "% context")
 	}
+	if l.Spend != nil {
+		add(Money(*l.Spend))
+	}
 	if l.Kind == core.StatusIdle {
 		add(hint)
 	}
@@ -79,6 +83,24 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 		}
 	}
 	return styled(faint, truncate(line, width))
+}
+
+// Money formats a cost to the cent: $1.23 in US dollars, else the
+// amount and the currency code. It is empty for an amount that is not a
+// number.
+func Money(c core.Cost) string {
+	if math.IsNaN(c.Amount) || math.IsInf(c.Amount, 0) {
+		return ""
+	}
+	switch cur := oneLine(c.Currency); cur {
+	case "USD", "":
+		if c.Amount < 0 {
+			return fmt.Sprintf("-$%.2f", -c.Amount)
+		}
+		return fmt.Sprintf("$%.2f", c.Amount)
+	default:
+		return fmt.Sprintf("%.2f %s", c.Amount, cur)
+	}
 }
 
 // Duration formats d as 9s, 1m02s or 1h04m, rounding down.

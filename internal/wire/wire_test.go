@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -196,7 +197,7 @@ func decode(t *testing.T, s string) acp.SessionNotification {
 func TestUpdate(t *testing.T) {
 	ok := func(got, want core.Event) {
 		t.Helper()
-		if fmt.Sprintf("%#v", got) != fmt.Sprintf("%#v", want) {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("got  %#v\nwant %#v", got, want)
 		}
 	}
@@ -209,6 +210,8 @@ func TestUpdate(t *testing.T) {
 	ok(Update(decode(t, `{"sessionUpdate":"tool_call","toolCallId":"c","title":"t","status":"in_progress"}`), t0),
 		core.ToolStarted{At: t0, ID: "c", Title: "t", Status: core.Running})
 	ok(Update(decode(t, `{"sessionUpdate":"usage_update","used":1,"size":2}`), t0), core.Usage{At: t0, Used: 1, Size: 2})
+	ok(Update(decode(t, `{"sessionUpdate":"usage_update","used":1,"size":0,"cost":{"amount":0.42,"currency":"USD"}}`), t0),
+		core.Usage{At: t0, Used: 1, Cost: &core.Cost{Amount: 0.42, Currency: "USD"}})
 	ok(Update(decode(t, `{"sessionUpdate":"plan","entries":[]}`), t0), core.Ignored{At: t0})
 
 	upd := Update(decode(t, `{"sessionUpdate":"tool_call_update","toolCallId":"c","status":"failed",

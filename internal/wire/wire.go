@@ -91,7 +91,11 @@ func Update(n acp.SessionNotification, at time.Time) core.Event {
 		}
 		return e
 	case u.UsageUpdate != nil:
-		return core.Usage{At: at, Used: u.UsageUpdate.Used, Size: u.UsageUpdate.Size}
+		e := core.Usage{At: at, Used: u.UsageUpdate.Used, Size: u.UsageUpdate.Size}
+		if c := u.UsageUpdate.Cost; c != nil {
+			e.Cost = &core.Cost{Amount: c.Amount, Currency: c.Currency}
+		}
+		return e
 	case u.Notice != nil:
 		c := u.Notice
 		e := core.Notice{At: at, Severity: string(c.Severity), Title: c.Title, RetryAt: retryAt(c.Meta)}

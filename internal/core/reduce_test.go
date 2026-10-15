@@ -74,7 +74,11 @@ func genSession(t *rapid.T) []step {
 		func() Event { return Ignored{At: now} },
 		func() Event {
 			n := rapid.OneOf(rapid.SampledFrom([]uint64{0, 1, 15, 200000, 1<<64 - 1}), rapid.Uint64())
-			return Usage{At: now, Used: n.Draw(t, "used"), Size: n.Draw(t, "size")}
+			u := Usage{At: now, Used: n.Draw(t, "used"), Size: n.Draw(t, "size")}
+			if rapid.Bool().Draw(t, "hasCost") {
+				u.Cost = &Cost{Amount: rapid.Float64Range(0, 100).Draw(t, "cost"), Currency: "USD"}
+			}
+			return u
 		},
 		func() Event {
 			if rapid.IntRange(0, 4).Draw(t, "blank") == 0 {
@@ -515,6 +519,24 @@ func TestBannerOnceBeforeQueuedText(t *testing.T) {
 	if len(s.Entries) != 2 || s.Entries[0].Kind != Banner || s.Entries[1].Text != "early" {
 		t.Fatalf("entries %+v", s.Entries)
 	}
+}
+
+// Spend: the last cost the agent reported, kept when a later update has
+// none, and nothing until the first.
+func TestSpendIsLastReported(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		steps := genSession(t)
+		var last *Cost
+		for _, st := range steps {
+			if u, ok := st.event.(Usage); ok && st.before.Phase != Exited && u.Cost != nil {
+				last = u.Cost
+			}
+		}
+		got := Status(final(steps), t0).Spend
+		if (got == nil) != (last == nil) || (got != nil && *got != *last) {
+			t.Fatalf("spend %v, last reported %v", got, last)
+		}
+	})
 }
 
 // Context use: hidden until the agent reports a window size, then the

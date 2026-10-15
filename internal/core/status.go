@@ -37,11 +37,12 @@ type StatusLine struct {
 	// HasContext: the agent has reported a window size.
 	Context    int
 	HasContext bool
+	Spend      *Cost // what the session has cost, once the agent says
 }
 
 // Status describes s at time now.
 func Status(s State, now time.Time) StatusLine {
-	l := StatusLine{Queued: len(s.Queue)}
+	l := StatusLine{Queued: len(s.Queue), Spend: s.Spend}
 	if u := s.Usage; u != nil && u.Size > 0 {
 		l.HasContext = true
 		// used*100 can overflow 64 bits, so multiply into 128.

@@ -78,6 +78,8 @@ func TestStatusGolden(t *testing.T) {
 		{Kind: core.StatusIdle},
 		{Kind: core.StatusIdle, Queued: 2},
 		{Kind: core.StatusIdle, Context: 12, HasContext: true},
+		{Kind: core.StatusIdle, Context: 12, HasContext: true, Spend: &core.Cost{Amount: 1.234, Currency: "USD"}},
+		{Kind: core.StatusWriting, Elapsed: 3 * time.Second, Spend: &core.Cost{Amount: 0.5, Currency: "EUR"}},
 		{Kind: core.StatusWaiting, Elapsed: 2*time.Minute + 10*time.Second, Quiet: 45 * time.Second},
 		{Kind: core.StatusThinking, Elapsed: 14 * time.Second},
 		{Kind: core.StatusWriting, Elapsed: 3 * time.Second, Queued: 1},
