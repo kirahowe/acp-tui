@@ -99,6 +99,22 @@ func TestPermissionAnswersAnOfferedOption(t *testing.T) {
 		s := busyState()
 		opts := genOptions(t)
 		s, _ = Reduce(s, PermissionAsked{At: t0, Permission: Permission{ID: 1, Name: "web_fetch", Options: opts}})
+		// Only once-options are offered, in the order sent.
+		var once []PermOption
+		for _, o := range opts {
+			if o.Kind == AllowOnce || o.Kind == RejectOnce {
+				once = append(once, o)
+			}
+		}
+		if len(once) != len(s.Asks[0].Options) {
+			t.Fatalf("offered %+v of %+v", s.Asks[0].Options, opts)
+		}
+		for i, o := range s.Asks[0].Options {
+			if o != once[i] {
+				t.Fatalf("offered %+v of %+v", s.Asks[0].Options, opts)
+			}
+		}
+		opts = once
 		if len(s.Asks) != 1 || s.Pick < 0 || (len(opts) > 0 && s.Pick >= len(opts)) {
 			t.Fatalf("asks %d pick %d of %d", len(s.Asks), s.Pick, len(opts))
 		}
@@ -278,5 +294,47 @@ func TestStatusAsking(t *testing.T) {
 	l := Status(s, t0.Add(time.Minute))
 	if l.Kind != StatusAsking || l.Quiet != 0 || l.Asks != 1 || l.Labels != (Labels{Private: true, Contaminated: true}) {
 		t.Fatalf("%+v", l)
+	}
+}
+
+// P-perm6: no standing permission is ever offered or granted, whatever
+// the agent sends and whichever key is pressed.
+func TestNoAlwaysOptions(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		s := busyState()
+		s, _ = Reduce(s, PermissionAsked{At: t0, Permission: Permission{ID: 1, Options: genOptions(t)}})
+		for _, o := range s.Asks[0].Options {
+			if o.Kind != AllowOnce && o.Kind != RejectOnce {
+				t.Fatalf("offered %+v", o)
+			}
+		}
+		late := t0.Add(ArmDelay)
+		for _, e := range []Event{PermissionConfirm{At: late}, PermissionQuick{At: late, Kind: AllowAlways}, PermissionQuick{At: late, Kind: RejectAlways}} {
+			_, fx := Reduce(s, e)
+			for _, a := range answers(fx) {
+				if !a.Cancelled && (a.OptionID == "" || a.OptionID[:3] != "opt") {
+					t.Fatalf("answer %+v", a)
+				}
+			}
+		}
+		// Quick keys for the always kinds find nothing.
+		for _, k := range []OptionKind{AllowAlways, RejectAlways} {
+			if _, fx := Reduce(s, PermissionQuick{At: late, Kind: k}); len(answers(fx)) != 0 {
+				t.Fatalf("%s answered", k)
+			}
+		}
+	})
+}
+
+func TestOnlyAlwaysOptionsLeavesCancel(t *testing.T) {
+	s := busyState()
+	s, _ = Reduce(s, PermissionAsked{At: t0, Permission: Permission{ID: 1, Options: []PermOption{
+		{ID: "a", Kind: AllowAlways}, {ID: "r", Kind: RejectAlways}}}})
+	late := t0.Add(ArmDelay)
+	if _, fx := Reduce(s, PermissionConfirm{At: late}); len(answers(fx)) != 0 {
+		t.Fatalf("enter answered with nothing offered: %+v", fx)
+	}
+	if _, fx := Reduce(s, PermissionCancel{At: t0}); len(answers(fx)) != 1 {
+		t.Fatalf("cancel: %+v", fx)
 	}
 }

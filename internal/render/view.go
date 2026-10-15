@@ -53,10 +53,8 @@ func View(s core.State, input, hint string, now time.Time, width, height int) Fr
 		// while it waits, and the room is better spent on the request. Its
 		// input shows in what is left of the screen after the status line,
 		// the blank row above and the request's own frame.
-		p := s.Asks[0]
-		overhead := len(bottom) + 1 + 1 + 4 + len(p.Options)
 		bottom = append(bottom, "")
-		bottom = append(bottom, permissionBox(s, now, width, min(permissionBody, max(height-1-overhead, 1)))...)
+		bottom = append(bottom, permissionBox(s, now, width, height-1-len(bottom)-1)...)
 		inputLines = []string{""}
 		inputAt = -1
 	} else {

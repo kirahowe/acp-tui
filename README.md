@@ -42,18 +42,33 @@ writes all of it to a file.
 When the agent asks permission for a tool call, the request replaces the
 input box. It shows the tool's name and its input, indented and cut to ten
 lines, and the options the agent offered. Keys: `y` picks the first
-allow_once option, `n` the first reject_once, up/down and enter pick any
-option (the highlight starts on a reject, so a bare enter refuses), `v`
+allow_once option, `n` the first reject_once, up/down and enter pick between
+them (the highlight starts on a reject, so a bare enter refuses). Options
+of any other kind, such as allow_always, are not offered: acp-tui never
+grants standing permission. `v`
 puts the whole input into the transcript, and Esc or Ctrl-C answers
 cancelled. Keys that would approve do nothing for the first 600 ms, so a
 `y` typed for the input cannot allow a call that appeared mid-word. Other
 keys are ignored while a request waits, so no prompt can go out. Requests
 queue and are answered in order; ending the turn cancels the rest.
 
+Nothing the agent wrote in a request is dropped. Control characters, bidi
+and other format characters, and any other code point that does not print
+show as `\uXXXX` escapes, so the input reads back as JSON to exactly what
+will run. Wrapping adds line breaks; nothing is cut except in the
+collapsed box, where `v` shows the rest.
+
 If the agent reports session labels in `_meta["agentloop/labels"]` on tool
 calls and usage updates, the status line shows them: `[private]` in bold
 and ` contaminated ` in reverse video. Labels only accumulate during a
 session.
+
+While the session is contaminated, URLs in what the agent writes (replies,
+notices, tool names, arguments and output) show defanged, as
+`hxxps://host[.]tld/path`, so a click cannot carry data out. acp-tui never
+writes OSC 8 hyperlinks. The request box shows its input exactly, URLs
+included. acp-tui sends only text prompts; it never sends resource or
+resource_link blocks, and a paste while a request waits is dropped.
 
 ## How it is built
 

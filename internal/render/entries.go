@@ -38,6 +38,10 @@ func blankBetween(prev, e core.Entry) bool {
 }
 
 func entry(e core.Entry, width int, now time.Time) []string {
+	if e.Defang {
+		e.Defang = false
+		return defangLines(entry(defanged(e), width, now))
+	}
 	switch e.Kind {
 	case core.User:
 		return userLines(e.Text, width)

@@ -225,6 +225,9 @@ type Entry struct {
 	Detail string // a notice's description
 	Calls  []Call // a Tool run's calls, or the calls Details shows
 	Final  bool   // nothing will change it again
+	// Defang says the session was contaminated when the agent wrote this,
+	// so URLs in it show defanged. See render.Defang.
+	Defang bool
 }
 
 // Cost is an amount of money: the session's spend so far.
@@ -435,6 +438,7 @@ func (r *reducer) agentEvent(e Event) {
 		if run.Final {
 			return
 		}
+		run.Defang = run.Defang || s.Labels.Contaminated // its output may be what contaminated it
 		c := &run.Calls[j]
 		if e.Title != nil {
 			c.Title = *e.Title
@@ -470,6 +474,7 @@ func (r *reducer) startCall(c Call) {
 	es := r.s.Entries
 	if n := len(es); n > 0 && es[n-1].Kind == Tool && !es[n-1].Final {
 		es[n-1].Calls = append(es[n-1].Calls, c)
+		es[n-1].Defang = es[n-1].Defang || r.s.Labels.Contaminated
 		return
 	}
 	r.add(Entry{Kind: Tool, Calls: []Call{c}})
@@ -501,7 +506,7 @@ func (r *reducer) showTools() {
 	}
 	for i := len(es) - 1; i >= 0; i-- {
 		if es[i].Kind == Tool {
-			r.add(Entry{Kind: Details, Calls: append([]Call(nil), es[i].Calls...), Final: true})
+			r.add(Entry{Kind: Details, Calls: append([]Call(nil), es[i].Calls...), Final: true, Defang: es[i].Defang})
 			return
 		}
 	}
@@ -513,6 +518,7 @@ func (r *reducer) appendText(id, text string) {
 	es := r.s.Entries
 	if n := len(es); n > 0 && es[n-1].Kind == Agent && !es[n-1].Final && (id == "" || es[n-1].ID == id) {
 		es[n-1].Text += text
+		es[n-1].Defang = es[n-1].Defang || r.s.Labels.Contaminated
 	} else {
 		r.add(Entry{Kind: Agent, ID: id, Text: text})
 	}
@@ -520,16 +526,19 @@ func (r *reducer) appendText(id, text string) {
 	r.s.Entries = r.s.Entries[:len(r.s.Entries)-1]
 	blocks, tail := splitBlocks(open.Text)
 	for _, b := range blocks {
-		r.s.Entries = append(r.s.Entries, Entry{Kind: Agent, ID: open.ID, Text: b, Final: true})
+		r.s.Entries = append(r.s.Entries, Entry{Kind: Agent, ID: open.ID, Text: b, Final: true, Defang: open.Defang})
 	}
 	if tail != "" {
-		r.s.Entries = append(r.s.Entries, Entry{Kind: Agent, ID: open.ID, Text: tail})
+		r.s.Entries = append(r.s.Entries, Entry{Kind: Agent, ID: open.ID, Text: tail, Defang: open.Defang})
 	}
 }
 
 // add appends an entry. A new entry closes the open agent entry or run
 // of tool calls before it; the run is final once its calls are.
 func (r *reducer) add(e Entry) {
+	if e.Kind != User && e.Kind != Banner && e.Kind != Request { // the operator's own words, and what is being approved, show as they are
+		e.Defang = e.Defang || r.s.Labels.Contaminated
+	}
 	if n := len(r.s.Entries); n > 0 {
 		switch last := &r.s.Entries[n-1]; last.Kind {
 		case Agent:

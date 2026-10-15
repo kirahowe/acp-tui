@@ -67,6 +67,19 @@ func (p Permission) Label() string {
 // typing, and a y or an enter meant for the input must not approve a call.
 const ArmDelay = 600 * time.Millisecond
 
+// onceOptions keeps the options that last for this one call. The person
+// is never offered an allow_always or reject_always, nor a kind this
+// client does not know: acp-tui does not grant standing permission.
+func onceOptions(opts []PermOption) []PermOption {
+	var out []PermOption
+	for _, o := range opts {
+		if o.Kind == AllowOnce || o.Kind == RejectOnce {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
 // DefaultPick is the option that starts highlighted: the safest one, so a
 // bare enter refuses. That is the first reject_once, else the first
 // reject_always, else the first option.
@@ -160,7 +173,7 @@ func (r *reducer) permission(e Event) {
 			s.Turn.Retry = nil
 		}
 		p := e.Permission
-		p.Options = append([]PermOption(nil), p.Options...)
+		p.Options = onceOptions(p.Options)
 		if len(s.Asks) == 0 {
 			p.Since = e.At
 			s.Pick = DefaultPick(p.Options)
@@ -209,12 +222,12 @@ func (r *reducer) answer(at time.Time, i int) {
 		case o.Kind.Rejects():
 			verb = "rejected"
 		default:
-			verb = "chose " + o.Name + " for"
+			verb = "chose " + EscapeLabel(o.Name) + " for"
 		}
 	} else {
 		r.emit(AnswerPermission{ID: p.ID, Cancelled: true})
 	}
-	r.add(Entry{Kind: Note, Text: verb + ": " + p.Label(), Final: true})
+	r.add(Entry{Kind: Note, Text: verb + ": " + EscapeLabel(p.Label()), Final: true})
 	r.next(at)
 }
 
