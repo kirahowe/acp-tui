@@ -113,6 +113,8 @@ func TestReplayLabels(t *testing.T) {
 {"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"completed","_meta":{"agentloop/labels":["private"]}}
 {"sessionUpdate":"tool_call","toolCallId":"c2","title":"web_fetch","status":"pending","_meta":{"agentloop/labels":["contaminated","private"]}}
 {"sessionUpdate":"usage_update","used":1,"size":10,"_meta":{"agentloop/labels":[]}}
+{"sessionUpdate":"session_info_update","_meta":{"agentloop/labels":["contaminated","private"]}}
+{"sessionUpdate":"session_info_update","_meta":{"agentloop/labels":["private"]}}
 {"stopReason":"end_turn"}
 `
 	events, err := Replay([]byte(trace), t0)

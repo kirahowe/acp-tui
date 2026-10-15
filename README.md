@@ -59,7 +59,7 @@ will run. Wrapping adds line breaks; nothing is cut except in the
 collapsed box, where `v` shows the rest.
 
 If the agent reports session labels in `_meta["agentloop/labels"]` on tool
-calls and usage updates, the status line shows them: `[private]` in bold
+calls, usage updates and session_info_update, the status line shows them: `[private]` in bold
 and ` contaminated ` in reverse video. Labels only accumulate during a
 session.
 
@@ -93,6 +93,10 @@ resets. Ctrl-T again disarms it.
 If the agent does not advertise `promptCapabilities.embeddedContext`, a
 paste cannot be labelled. It goes in the prompt as plain text and the
 transcript warns that it was not labelled untrusted.
+
+`go test` also drives a real agentloop binary against a fake Messages API on
+localhost, when one exists at `../agentloop/bin/agentloop` (or the path in
+`-agentloop`); without it those tests skip.
 
 ## How it is built
 

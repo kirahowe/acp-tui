@@ -271,14 +271,17 @@ func TestLabels(t *testing.T) {
 		want   core.Labels
 		ok     bool
 	}{
-		"tool_call":   {`{"sessionUpdate":"tool_call","toolCallId":"c","title":"t","_meta":{"agentloop/labels":["private"]}}`, core.Labels{Private: true}, true},
-		"update":      {`{"sessionUpdate":"tool_call_update","toolCallId":"c","_meta":{"agentloop/labels":["contaminated","private"]}}`, core.Labels{Private: true, Contaminated: true}, true},
-		"usage":       {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":[]}}`, core.Labels{}, true},
-		"unknown":     {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":["secret"]}}`, core.Labels{}, true},
-		"none":        {`{"sessionUpdate":"usage_update","used":1,"size":2}`, core.Labels{}, false},
-		"other_meta":  {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"x":1}}`, core.Labels{}, false},
-		"malformed":   {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":"private"}}`, core.Labels{}, false},
-		"not_carried": {`{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"x"},"_meta":{"agentloop/labels":["private"]}}`, core.Labels{}, false},
+		"tool_call":                {`{"sessionUpdate":"tool_call","toolCallId":"c","title":"t","_meta":{"agentloop/labels":["private"]}}`, core.Labels{Private: true}, true},
+		"update":                   {`{"sessionUpdate":"tool_call_update","toolCallId":"c","_meta":{"agentloop/labels":["contaminated","private"]}}`, core.Labels{Private: true, Contaminated: true}, true},
+		"usage":                    {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":[]}}`, core.Labels{}, true},
+		"session_info":             {`{"sessionUpdate":"session_info_update","_meta":{"agentloop/labels":["private"]}}`, core.Labels{Private: true}, true},
+		"session_info_with_fields": {`{"sessionUpdate":"session_info_update","title":"x","updatedAt":"2026-10-15T09:00:00Z","_meta":{"agentloop/labels":["contaminated"]}}`, core.Labels{Contaminated: true}, true},
+		"session_info_bare":        {`{"sessionUpdate":"session_info_update","title":"x"}`, core.Labels{}, false},
+		"unknown":                  {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":["secret"]}}`, core.Labels{}, true},
+		"none":                     {`{"sessionUpdate":"usage_update","used":1,"size":2}`, core.Labels{}, false},
+		"other_meta":               {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"x":1}}`, core.Labels{}, false},
+		"malformed":                {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":"private"}}`, core.Labels{}, false},
+		"not_carried":              {`{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"x"},"_meta":{"agentloop/labels":["private"]}}`, core.Labels{}, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, ok := Labels(decode(t, c.update), t0)

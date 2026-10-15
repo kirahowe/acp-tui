@@ -185,7 +185,7 @@ func Outcome(a core.AnswerPermission) acp.RequestPermissionResponse {
 const labelsKey = "agentloop/labels"
 
 // Labels reads the session's labels from the _meta of a tool_call,
-// tool_call_update or usage_update. ok is false when the update carries
+// tool_call_update, usage_update or session_info_update. ok is false when the update carries
 // none, or they are malformed. A label this client does not know shows
 // nowhere: the agent is the one that fails closed on it.
 func Labels(n acp.SessionNotification, at time.Time) (core.LabelsSeen, bool) {
@@ -198,6 +198,11 @@ func Labels(n acp.SessionNotification, at time.Time) (core.LabelsSeen, bool) {
 		meta = u.ToolCallUpdate.Meta
 	case u.UsageUpdate != nil:
 		meta = u.UsageUpdate.Meta
+	case u.SessionInfoUpdate != nil:
+		// agentloop sends one with only the labels when they change
+		// without another update to carry them. Its other fields are not
+		// read.
+		meta = u.SessionInfoUpdate.Meta
 	}
 	var names []string
 	if json.Unmarshal(meta[labelsKey], &names) != nil {
