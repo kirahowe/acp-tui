@@ -315,3 +315,42 @@ func TestTruncateVariationSelector(t *testing.T) {
 		t.Fatalf("%d wide, want at most 4", w)
 	}
 }
+
+// listBreaks only ever adds blank lines, so it cannot lose or reorder
+// text, and running it twice changes nothing more.
+func TestListBreaksAddsOnlyBlankLines(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		lines := rapid.SliceOf(rapid.SampledFrom([]string{
+			"", "text", "Next:", "1. one", "3. three", "10) ten", "- dash", "  2. nested", "```", "~~~", "> quote", "    4. code",
+		})).Draw(t, "lines")
+		md := strings.Join(lines, "\n")
+		got := listBreaks(md)
+		if listBreaks(got) != got {
+			t.Fatalf("not idempotent: %q", md)
+		}
+		var kept []string
+		for _, l := range strings.Split(got, "\n") {
+			if l != "" {
+				kept = append(kept, l)
+			}
+		}
+		var want []string
+		for _, l := range lines {
+			if l != "" {
+				want = append(want, l)
+			}
+		}
+		if strings.Join(kept, "\n") != strings.Join(want, "\n") {
+			t.Fatalf("changed text:\n%q\n%q", md, got)
+		}
+	})
+}
+
+// A numbered item right after a line of text starts a list, whatever
+// its number: models continue a list's numbering after a paragraph.
+func TestNumberedItemAfterTextIsAList(t *testing.T) {
+	got := plainLines(Markdown("Next:\n3. **Add** one\n4. Add two", 80))
+	if want := "Next:\n\n3. Add one\n4. Add two"; got != want {
+		t.Fatalf("got\n%s\nwant\n%s", got, want)
+	}
+}

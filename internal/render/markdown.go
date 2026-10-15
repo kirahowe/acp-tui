@@ -1,6 +1,7 @@
 package render
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -8,6 +9,8 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
+
+	"github.com/kirahowe/acp-tui/internal/core"
 )
 
 var parser = goldmark.DefaultParser()
@@ -17,12 +20,52 @@ var parser = goldmark.DefaultParser()
 // and the markers go; code is indented and faint; quotes get a bar; lists
 // get bullets. Tables and raw HTML are shown as written.
 func Markdown(md string, width int) []string {
-	src := []byte(md)
+	src := []byte(listBreaks(md))
 	m := &mdRenderer{src: src}
 	return m.blocks(parser.Parse(text.NewReader(src)), width, 0, false)
 }
 
 type mdRenderer struct{ src []byte }
+
+// orderedItem matches a line that starts an ordered list item with
+// some text after the marker.
+var orderedItem = regexp.MustCompile(`^ {0,3}[0-9]{1,9}[.)][ \t]+\S`)
+
+// listBreaks puts a blank line before a numbered item that follows a
+// line of plain text. CommonMark lets only an item numbered 1 interrupt
+// a paragraph, so "Next:\n3. Add it" is one paragraph; models write it
+// meaning a list, often one that carries on numbering from earlier. The
+// text above must not belong to a list already, or the blank line would
+// split that list in two.
+func listBreaks(md string) string {
+	lines := strings.Split(md, "\n")
+	out := make([]string, 0, len(lines))
+	var fence string
+	inList := false // the run of text since the last blank line has a list item
+	for i, line := range lines {
+		switch {
+		case fence != "":
+			if core.ClosesFence(line, fence) {
+				fence = ""
+			}
+		case strings.TrimSpace(line) == "":
+			inList = false
+		case core.OpensFence(line) != "":
+			fence = core.OpensFence(line)
+		default:
+			item := listItem.MatchString(line)
+			if item && !inList && i > 0 && strings.TrimSpace(lines[i-1]) != "" && orderedItem.MatchString(line) {
+				out = append(out, "")
+			}
+			inList = inList || item
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+// listItem matches a line that starts any list item, bullet or numbered.
+var listItem = regexp.MustCompile(`^[ \t]*([-+*]|[0-9]{1,9}[.)])([ \t]|$)`)
 
 // minInner is the narrowest a nested block may get before its indent is
 // dropped, so deep nesting cannot push text past the width.

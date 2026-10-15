@@ -30,22 +30,22 @@ func splitBlocks(md string) (blocks []string, tail string) {
 		pos += nl + 1
 		switch {
 		case fence != "":
-			if closesFence(line, fence) {
+			if ClosesFence(line, fence) {
 				fence = ""
 			}
 		case strings.Trim(line, " \t\r") == "":
 			blocks = append(blocks, md[start:pos])
 			start = pos
 		default:
-			fence = opensFence(line)
+			fence = OpensFence(line)
 		}
 	}
 	return blocks, md[start:]
 }
 
-// opensFence returns the run of backticks or tildes that opens a fenced
+// OpensFence returns the run of backticks or tildes that opens a fenced
 // code block on this line, or "".
-func opensFence(line string) string {
+func OpensFence(line string) string {
 	run := fenceRun(line)
 	if run == "" {
 		return ""
@@ -57,7 +57,9 @@ func opensFence(line string) string {
 	return run
 }
 
-func closesFence(line, open string) bool {
+// ClosesFence reports whether line closes the fenced block that open
+// began.
+func ClosesFence(line, open string) bool {
 	run := fenceRun(line)
 	return run != "" && run[0] == open[0] && len(run) >= len(open) &&
 		strings.Trim(strings.TrimLeft(line, " ")[len(run):], " \t\r") == ""
