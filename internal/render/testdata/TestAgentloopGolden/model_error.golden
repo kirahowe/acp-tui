@@ -1,0 +1,7 @@
+␛[0;2m›␛[m hi
+
+␛[0;2m! The model call failed: unauthorized · invalid x-api-key␛[m
+␛[0;2merror: unauthorized (401): invalid x-api-key␛[m
+~~~~~~~~~~~~~~~~~~~~
+␛[0;2m  ready␛[m
+› 

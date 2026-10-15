@@ -1,0 +1,8 @@
+␛[0;2m›␛[m hi
+
+Running it.
+  ✗ echo {"text":"hi"} · The run stopped while this call was running, so it may…
+␛[0;2m[cancelled]␛[m
+~~~~~~~~~~~~~~~~~~~~
+␛[0;2m  ready␛[m
+› 

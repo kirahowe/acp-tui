@@ -26,7 +26,7 @@ type StatusLine struct {
 	Tool    string        // the title, when one tool is running
 	Tools   int           // how many tools are running
 	RetryIn time.Duration // when Retrying
-	Reason  string        // the retry notice's title, when Retrying
+	Reason  string        // why it is retrying, when Retrying
 	Elapsed time.Duration // since the turn started
 	Quiet   time.Duration // since the last agent event, once >= QuietAfter
 	Queued  int
@@ -66,7 +66,7 @@ func Status(s State, now time.Time) StatusLine {
 	case t.Retry != nil && t.Retry.At.After(now):
 		l.Kind = StatusRetrying
 		l.RetryIn = t.Retry.At.Sub(now)
-		l.Reason = t.Retry.Title
+		l.Reason = t.Retry.Reason
 	case l.Tools > 0:
 		l.Kind = StatusRunning
 	case t.Activity == Thinking:

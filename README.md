@@ -6,7 +6,7 @@ as a child process, streams its replies into the terminal's own scrollback,
 and keeps a status line that shows how long the agent has been working and
 how long it has been silent.
 
-Only the core exists so far. It has no command yet.
+So far there is the core and the renderer, but no command yet.
 
 ## How it is built
 
@@ -15,10 +15,12 @@ The state of a chat, and every rule for changing it, lives in
 reply, a tool call, a key press, a clock tick) and returns the new state
 and a list of effects, such as "send this prompt" or "print these entries".
 It reads no clock and does no IO, so property tests can check it over long
-random sessions. `internal/wire` turns ACP messages into those events.
+random sessions. `internal/wire` turns ACP messages into those events, and
+`internal/render` turns the state into terminal lines. The renderer uses
+bold, italic and faint, and no colours.
 
-The terminal UI and the agent process are thin code around the core that
-runs the effects.
+The terminal UI and the agent process will be thin code around the core that
+carries out the effects.
 
 ## Building
 

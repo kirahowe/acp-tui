@@ -1,0 +1,8 @@
+␛[0;2m  ○ bash ls -la␛[m
+␛[0;2m  ⠋ bash ls -la␛[m
+␛[0;2m  ✓ bash ls -la␛[m
+  ✗ read_file go.mod · no such file
+␛[0;2m  ○ echo hi · stopped␛[m
+␛[0;2m  ✓ bash very long arguments very long arguments very long …␛[m
+␛[0;2m  ✓ 検索 東京の天気を調べて、明日の予報を教えてください。そ…␛[m
+␛[0;2m  ✓ multi line[31m title␛[m

@@ -190,8 +190,8 @@ type Entry struct {
 }
 
 type Retry struct {
-	At    time.Time
-	Title string
+	At     time.Time
+	Reason string // the notice's description, else its title
 }
 
 type Turn struct {
@@ -251,7 +251,11 @@ func (r *reducer) apply(e Event) {
 			s.Turn.LastEvent = e.At
 			s.Turn.Retry = nil
 			if e.Severity == "warning" && e.RetryAt != nil {
-				s.Turn.Retry = &Retry{At: *e.RetryAt, Title: e.Title}
+				reason := e.Detail
+				if reason == "" {
+					reason = e.Title
+				}
+				s.Turn.Retry = &Retry{At: *e.RetryAt, Reason: reason}
 				return
 			}
 		}

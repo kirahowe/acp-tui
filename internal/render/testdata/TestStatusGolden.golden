@@ -1,0 +1,12 @@
+␛[0;2m⠋ starting␛[m
+␛[0;2m  ready · shift+enter for a new line␛[m
+␛[0;2m  ready · 2 queued · shift+enter for a new line␛[m
+␛[0;2m⠋ waiting · 2m10s · no output for 45s␛[m
+␛[0;2m⠋ thinking · 14s␛[m
+␛[0;2m⠋ writing · 3s · 1 queued␛[m
+␛[0;2m⠋ running echo {"text":"hi"} · 1m02s␛[m
+␛[0;2m⠋ running 3 tools · 1h04m␛[m
+␛[0;2m⠋ retrying in 9s · rate limit exceeded · 41s␛[m
+␛[0;2m  cancelling · 3s␛[m
+␛[0;2m  the agent exited␛[m
+␛[0;2m⠋ running echo {"te…␛[m

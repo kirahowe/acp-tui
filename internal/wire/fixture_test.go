@@ -1,15 +1,11 @@
 package wire
 
 import (
-	"bufio"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
-
-	acp "github.com/caelis-labs/acp-go-sdk"
 
 	"github.com/kirahowe/acp-tui/internal/core"
 )
@@ -21,11 +17,14 @@ var t0 = time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 // check, if set, sees the state after each line.
 func replay(t *testing.T, name string, check func(line int, s core.State)) core.State {
 	t.Helper()
-	f, err := os.Open(filepath.Join("..", "..", "testdata", "agentloop", name+".jsonl"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "agentloop", name+".jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	events, err := Replay(b, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var s core.State
 	feed := func(e core.Event) {
@@ -40,41 +39,11 @@ func replay(t *testing.T, name string, check func(line int, s core.State)) core.
 	feed(core.Connected{At: t0, Agent: "agentloop"})
 	feed(core.TerminalReady{At: t0})
 	feed(core.Submit{At: t0, Text: "hi"})
-
-	sc := bufio.NewScanner(f)
-	for line := 1; sc.Scan(); line++ {
-		var keys map[string]json.RawMessage
-		if err := json.Unmarshal(sc.Bytes(), &keys); err != nil {
-			t.Fatalf("line %d: %v", line, err)
-		}
-		switch {
-		case keys["sessionUpdate"] != nil:
-			var u acp.SessionUpdate
-			if err := u.UnmarshalJSON(sc.Bytes()); err != nil {
-				t.Fatalf("line %d: %v", line, err)
-			}
-			feed(Update(acp.SessionNotification{SessionId: "s1", Update: u}, t0))
-		case keys["stopReason"] != nil:
-			var r acp.PromptResponse
-			if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
-				t.Fatalf("line %d: %v", line, err)
-			}
-			feed(Response(r, nil, t0))
-		case keys["error"] != nil:
-			var re acp.RequestError
-			if err := json.Unmarshal(keys["error"], &re); err != nil {
-				t.Fatalf("line %d: %v", line, err)
-			}
-			feed(Response(acp.PromptResponse{}, &re, t0))
-		default:
-			t.Fatalf("line %d: unknown shape %s", line, sc.Bytes())
-		}
+	for i, e := range events {
+		feed(e)
 		if check != nil {
-			check(line, s)
+			check(i+1, s)
 		}
-	}
-	if err := sc.Err(); err != nil {
-		t.Fatal(err)
 	}
 	return s
 }
@@ -129,7 +98,7 @@ func TestAgentloopRetryCountdown(t *testing.T) {
 			return
 		}
 		l := core.Status(s, t0.Add(6*time.Second))
-		if l.Kind != core.StatusRetrying || l.RetryIn != 9*time.Second || l.Reason != "Rate limited, retrying in 12 s" {
+		if l.Kind != core.StatusRetrying || l.RetryIn != 9*time.Second || l.Reason != "rate limit exceeded" {
 			t.Fatalf("status %+v", l)
 		}
 	})
