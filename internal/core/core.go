@@ -38,10 +38,13 @@ type (
 		At              time.Time
 		MessageID, Text string
 	}
+	// ToolStarted is a new call. Name is the tool's name, when the agent
+	// gives it; Input is its arguments as JSON, when it gives them.
 	ToolStarted struct {
-		At              time.Time
-		ID, Title, Kind string
-		Status          ToolStatus
+		At                           time.Time
+		ID, Name, Title, Kind, Input string
+		Output                       string // when it arrives finished
+		Status                       ToolStatus
 	}
 	// ToolUpdated changes only the fields that are not nil.
 	ToolUpdated struct {
@@ -49,7 +52,8 @@ type (
 		ID     string
 		Title  *string
 		Status *ToolStatus
-		Text   *string // first line of a failed call's content
+		Input  *string
+		Output *string // the call's text content
 	}
 	Notice struct {
 		At                      time.Time
@@ -84,6 +88,8 @@ type (
 		InputEmpty bool
 	} // Ctrl-C
 	EOF struct{ At time.Time } // Ctrl-D on an empty input
+	// ShowTools asks to see the latest run of tool calls in full.
+	ShowTools struct{ At time.Time }
 )
 
 // Events from the shell.
@@ -112,6 +118,7 @@ func (e Usage) at() time.Time         { return e.At }
 func (e Submit) at() time.Time        { return e.At }
 func (e Interrupt) at() time.Time     { return e.At }
 func (e EOF) at() time.Time           { return e.At }
+func (e ShowTools) at() time.Time     { return e.At }
 func (e Tick) at() time.Time          { return e.At }
 func (e TerminalReady) at() time.Time { return e.At }
 func (e Printed) at() time.Time       { return e.At }
@@ -177,23 +184,43 @@ type EntryKind int
 const (
 	User EntryKind = iota
 	Agent
+	// Tool is a run of tool calls, one after another with nothing
+	// between them. It shows as one line.
 	Tool
 	Note
 	// Banner is printed once, when the session starts: Title, and the
 	// agent's name, version and model in Text.
 	Banner
+	// Details is a run of tool calls shown in full, at the user's request.
+	Details
 )
+
+// Call is one tool call.
+type Call struct {
+	ID, Name, Title string
+	Status          ToolStatus
+	Input           string // the arguments as JSON, when the agent sent them
+	Output          string // the call's text content
+}
+
+// Label is what to call the call: the tool's name, else the title.
+func (c Call) Label() string {
+	if c.Name != "" {
+		return c.Name
+	}
+	return c.Title
+}
 
 // Entry is one item of the transcript. An agent message is split into one
 // entry per markdown block (see SplitStable), so a long reply can reach
 // scrollback a block at a time.
 type Entry struct {
 	Kind   EntryKind
-	ID     string // message id or tool call id
+	ID     string // message id
 	Text   string // user text, agent markdown, or note text
-	Title  string // tool title
-	Status ToolStatus
-	Detail string // a failed tool's first content line, or a notice's description
+	Title  string // the banner's title
+	Detail string // a notice's description
+	Calls  []Call // a Tool run's calls, or the calls Details shows
 	Final  bool   // nothing will change it again
 }
 
@@ -245,6 +272,11 @@ type State struct {
 // caller may keep the old state.
 func Reduce(s State, e Event) (State, []Effect) {
 	s.Entries = append([]Entry(nil), s.Entries...)
+	for i := range s.Entries {
+		if !s.Entries[i].Final { // a final entry's calls never change
+			s.Entries[i].Calls = append([]Call(nil), s.Entries[i].Calls...)
+		}
+	}
 	s.Queue = append([]string(nil), s.Queue...)
 	r := &reducer{s: s}
 	r.apply(e)
@@ -343,6 +375,8 @@ func (r *reducer) apply(e Event) {
 		default:
 			r.emit(Quit{})
 		}
+	case ShowTools:
+		r.showTools()
 	case EOF:
 		if s.Phase == Busy && !s.Turn.Cancelling {
 			s.Turn.Cancelling = true
@@ -371,42 +405,89 @@ func (r *reducer) agentEvent(e Event) {
 		s.Turn.Activity = Thinking
 	case ToolStarted:
 		s.Turn.Activity = Waiting
-		r.add(Entry{Kind: Tool, ID: e.ID, Title: e.Title, Status: e.Status, Final: done(e.Status)})
+		r.startCall(Call{ID: e.ID, Name: e.Name, Title: e.Title, Status: e.Status, Input: e.Input, Output: e.Output})
 	case ToolUpdated:
 		s.Turn.Activity = Waiting
-		i := r.findTool(e.ID)
+		i, j := r.findCall(e.ID)
 		if i < 0 {
 			// Some agents may skip tool_call; show the update anyway.
-			r.add(Entry{Kind: Tool, ID: e.ID, Title: e.ID})
-			i = len(s.Entries) - 1
+			r.startCall(Call{ID: e.ID, Title: e.ID})
+			i, j = r.findCall(e.ID)
 		}
-		t := &s.Entries[i]
-		if t.Final {
+		run := &s.Entries[i]
+		if run.Final {
 			return
 		}
+		c := &run.Calls[j]
 		if e.Title != nil {
-			t.Title = *e.Title
+			c.Title = *e.Title
 		}
 		if e.Status != nil {
-			t.Status = *e.Status
-			t.Final = done(t.Status)
+			c.Status = *e.Status
 		}
-		if e.Text != nil {
-			t.Detail = *e.Text
+		if e.Input != nil {
+			c.Input = *e.Input
 		}
+		if e.Output != nil {
+			c.Output = *e.Output
+		}
+		// A run still taking calls stays open; one that something else
+		// has followed is final once its calls are.
+		run.Final = i != len(s.Entries)-1 && allDone(run.Calls)
 	}
 }
 
 func done(st ToolStatus) bool { return st == OK || st == Failed || st == Stopped }
 
-// findTool returns the index of the latest tool entry with this id, or -1.
-func (r *reducer) findTool(id string) int {
-	for i := len(r.s.Entries) - 1; i >= 0; i-- {
-		if e := r.s.Entries[i]; e.Kind == Tool && e.ID == id {
-			return i
+func allDone(cs []Call) bool {
+	for _, c := range cs {
+		if !done(c.Status) {
+			return false
 		}
 	}
-	return -1
+	return true
+}
+
+// startCall adds a call to the open run, or starts a run.
+func (r *reducer) startCall(c Call) {
+	es := r.s.Entries
+	if n := len(es); n > 0 && es[n-1].Kind == Tool && !es[n-1].Final {
+		es[n-1].Calls = append(es[n-1].Calls, c)
+		return
+	}
+	r.add(Entry{Kind: Tool, Calls: []Call{c}})
+}
+
+// findCall returns where the latest call with this id is: its run's
+// index and its index in the run, or -1, -1.
+func (r *reducer) findCall(id string) (int, int) {
+	for i := len(r.s.Entries) - 1; i >= 0; i-- {
+		e := r.s.Entries[i]
+		if e.Kind != Tool {
+			continue
+		}
+		for j := len(e.Calls) - 1; j >= 0; j-- {
+			if e.Calls[j].ID == id {
+				return i, j
+			}
+		}
+	}
+	return -1, -1
+}
+
+// showTools adds the latest run of tool calls again, in full, when the
+// agent is idle and it is not the last thing shown already.
+func (r *reducer) showTools() {
+	es := r.s.Entries
+	if r.s.Phase != Idle || len(es) == 0 || es[len(es)-1].Kind == Details {
+		return
+	}
+	for i := len(es) - 1; i >= 0; i-- {
+		if es[i].Kind == Tool {
+			r.add(Entry{Kind: Details, Calls: append([]Call(nil), es[i].Calls...), Final: true})
+			return
+		}
+	}
 }
 
 // appendText adds a chunk to the open agent entry, or opens one, and then
@@ -429,10 +510,16 @@ func (r *reducer) appendText(id, text string) {
 	}
 }
 
-// add appends an entry. A new entry closes an open agent entry before it.
+// add appends an entry. A new entry closes the open agent entry or run
+// of tool calls before it; the run is final once its calls are.
 func (r *reducer) add(e Entry) {
-	if n := len(r.s.Entries); n > 0 && r.s.Entries[n-1].Kind == Agent {
-		r.s.Entries[n-1].Final = true
+	if n := len(r.s.Entries); n > 0 {
+		switch last := &r.s.Entries[n-1]; last.Kind {
+		case Agent:
+			last.Final = true
+		case Tool:
+			last.Final = allDone(last.Calls)
+		}
 	}
 	r.s.Entries = append(r.s.Entries, e)
 }
@@ -443,8 +530,10 @@ func (r *reducer) closeAll() {
 		e := &r.s.Entries[i]
 		if !e.Final {
 			e.Final = true
-			if e.Kind == Tool {
-				e.Status = Stopped
+			for j := range e.Calls {
+				if !done(e.Calls[j].Status) {
+					e.Calls[j].Status = Stopped
+				}
 			}
 		}
 	}

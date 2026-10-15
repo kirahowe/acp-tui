@@ -21,14 +21,19 @@ version, and the model if the agent names one in its session options. The
 banner's title is `--title` if given, otherwise the title the agent reports
 about itself, otherwise its name. The input sits in a box at the bottom,
 with a status line under it showing what the agent is doing, for how long,
-and how much of its context window is in use when the agent reports that.
+and how much of its context window is in use and what the session has
+cost when the agent reports those. A message you send stays in its box,
+so your turns stand apart from the agent's. Tool calls made one after
+another share one line that names the tools.
 
 Enter sends. Ctrl-J starts a new line in any terminal; Shift-Enter,
 Ctrl-Enter and Alt-Enter do too where the terminal reports them. Pressing
 Enter while the agent is working queues the text, and everything queued
 goes out as one message when the turn ends. Ctrl-C cancels the turn and
 puts any queued text back in the input. With nothing running and an empty
-input, Ctrl-C or Ctrl-D quits.
+input, Ctrl-C or Ctrl-D quits. Ctrl-O, once the turn is over, prints the
+latest run of tool calls in full: each call's arguments and the start of
+its output.
 
 The agent's stderr would garble the screen, so acp-tui keeps the last
 64 KiB and prints them if the agent exits on its own. `--agent-log FILE`

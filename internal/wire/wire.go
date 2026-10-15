@@ -76,18 +76,30 @@ func Update(n acp.SessionNotification, at time.Time) core.Event {
 		return core.ThoughtChunk{At: at, MessageID: messageID(c.MessageId), Text: blockText(c.Content)}
 	case u.ToolCall != nil:
 		c := u.ToolCall
-		return core.ToolStarted{At: at, ID: string(c.ToolCallId), Title: c.Title, Kind: string(c.Kind), Status: toolStatus(c.Status)}
+		e := core.ToolStarted{At: at, ID: string(c.ToolCallId), Title: c.Title, Kind: string(c.Kind),
+			Status: toolStatus(c.Status), Input: rawJSON(c.RawInput)}
+		if c.Name != nil {
+			e.Name = *c.Name
+		}
+		if c.Content != nil {
+			// A call can arrive already finished, with its output.
+			e.Output = contentText(c.Content)
+		}
+		return e
 	case u.ToolCallUpdate != nil:
 		c := u.ToolCallUpdate
 		e := core.ToolUpdated{At: at, ID: string(c.ToolCallId), Title: c.Title}
 		if c.Status != nil {
 			st := toolStatus(*c.Status)
 			e.Status = &st
-			if st == core.Failed {
-				if line := firstLine(c.Content); line != "" {
-					e.Text = &line
-				}
-			}
+		}
+		if c.RawInput != nil {
+			in := rawJSON(c.RawInput)
+			e.Input = &in
+		}
+		if c.Content != nil {
+			out := contentText(c.Content)
+			e.Output = &out
 		}
 		return e
 	case u.UsageUpdate != nil:
@@ -195,18 +207,29 @@ func blockText(b acp.ContentBlock) string {
 }
 
 // firstLine is the first non-empty line of a tool call's text content.
-func firstLine(content []acp.ToolCallContent) string {
+// contentText is the text of a call's content blocks, one after another.
+// Diffs and terminals are not shown.
+func contentText(content []acp.ToolCallContent) string {
+	var parts []string
 	for _, c := range content {
-		if c.Content == nil || c.Content.Content.Text == nil {
-			continue
-		}
-		for line := range strings.Lines(c.Content.Content.Text.Text) {
-			if line = strings.TrimSpace(line); line != "" {
-				return line
-			}
+		if c.Content != nil && c.Content.Content.Text != nil {
+			parts = append(parts, c.Content.Content.Text.Text)
 		}
 	}
-	return ""
+	return strings.Join(parts, "\n")
+}
+
+// rawJSON is a call's raw input or output as compact JSON, or "" when
+// there is none or it cannot be encoded.
+func rawJSON(v any) string {
+	if v == nil {
+		return ""
+	}
+	b, err := json.Marshal(v)
+	if err != nil || string(b) == "null" {
+		return ""
+	}
+	return string(b)
 }
 
 // retryAt reads agentloop's retry time from a notice's _meta. Any other

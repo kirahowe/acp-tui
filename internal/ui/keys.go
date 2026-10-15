@@ -18,6 +18,7 @@ const (
 	Newline                   // insert a newline into the input
 	Interrupt                 // Ctrl-C
 	EOF                       // Ctrl-D on an empty input
+	ShowTools                 // Ctrl-O: the latest tool calls in full
 )
 
 // Classify decides what a key press does. It is pure.
@@ -34,6 +35,8 @@ func Classify(k tea.KeyPressMsg, inputEmpty bool) Action {
 		return Newline
 	case "ctrl+c":
 		return Interrupt
+	case "ctrl+o":
+		return ShowTools
 	case "ctrl+d":
 		if inputEmpty {
 			return EOF

@@ -1,6 +1,7 @@
 package render
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -181,8 +182,10 @@ func TestWidthBound(t *testing.T) {
 		es := []core.Entry{
 			{Kind: core.User, Text: text, Final: true},
 			{Kind: core.Agent, Text: text, Final: true},
-			{Kind: core.Tool, Title: text, Status: core.Running},
-			{Kind: core.Tool, Title: text, Detail: text, Status: core.Failed, Final: true},
+			{Kind: core.Tool, Calls: []core.Call{{Title: text, Status: core.Running}, {Name: text, Status: core.OK}}},
+			{Kind: core.Tool, Calls: []core.Call{{Title: text, Output: text, Status: core.Failed}}, Final: true},
+			{Kind: core.Details, Calls: []core.Call{{Name: text, Input: text, Output: text, Status: core.Failed},
+				{Name: "x", Input: `{"a":` + strconvQuote(text) + `,"b":[1,2]}`, Output: text, Status: core.OK}}, Final: true},
 			{Kind: core.Note, Text: text, Detail: text, Final: true},
 			{Kind: core.Banner, Title: text, Text: text, Final: true},
 		}
@@ -421,3 +424,5 @@ func splitChunks(t *rapid.T, s string) []string {
 	}
 	return out
 }
+
+func strconvQuote(s string) string { b, _ := json.Marshal(s); return string(b) }

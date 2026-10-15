@@ -1,8 +1,37 @@
-␛[0;2m  ○ bash ls -la␛[m
-␛[0;2m  ⠋ bash ls -la␛[m
-␛[0;2m  ✓ bash ls -la␛[m
-  ✗ read_file go.mod · no such file
-␛[0;2m  ○ echo hi · stopped␛[m
-␛[0;2m  ✓ bash very long arguments very long arguments very long …␛[m
-␛[0;2m  ✓ 検索 東京の天気を調べて、明日の予報を教えてください。そ…␛[m
+␛[0;2m  ○ bash␛[m
+
+␛[0;2m  ⠋ bash␛[m
+
+␛[0;2m  ✓ roles␛[m
+
+  ✗ read_file · no such file
+
+␛[0;2m  ✓ echo · stopped␛[m
+
+  ✗ roles · read_file · fact_add ×3 · role_add ×… · 1 failed
+
+␛[0;2m  ✓ tool · 検索 東京の天気を調べて、明日の予報を教えてくだ…␛[m
+
 ␛[0;2m  ✓ multi line[31m title␛[m
+
+  ✓ roles
+  ✗ read_file
+␛[0;2m      path: go.mod␛[m
+␛[0;2m    ⎿ ␛[mno such file
+      at /x
+  ✓ fact_add
+␛[0;2m      topic: operator/career␛[m
+␛[0;2m      text: A long fact that goes on and on, past the edge …␛[m
+␛[0;2m      n: 3␛[m
+␛[0;2m      tags: ["a","b"]␛[m
+␛[0;2m    ⎿ ␛[m␛[0;2madded␛[m
+      ␛[0;2m line two␛[m
+      ␛[0;2mmore␛[m
+      ␛[0;2mmore␛[m
+      ␛[0;2mmore␛[m
+      ␛[0;2mmore␛[m
+      ␛[0;2mmore␛[m
+      ␛[0;2mmore␛[m
+␛[0;2m      … 4 more lines␛[m
+  ○ echo · stopped
+␛[0;2m      not json␛[m

@@ -38,6 +38,9 @@ type StatusLine struct {
 	Context    int
 	HasContext bool
 	Spend      *Cost // what the session has cost, once the agent says
+	// ToolsHidden says ShowTools would show something: the agent is idle
+	// and the latest run of tool calls is not shown in full.
+	ToolsHidden bool
 }
 
 // Status describes s at time now.
@@ -56,6 +59,12 @@ func Status(s State, now time.Time) StatusLine {
 		return l
 	case Idle:
 		l.Kind = StatusIdle
+		for i := len(s.Entries) - 1; i >= 0 && s.Entries[i].Kind != Details; i-- {
+			if s.Entries[i].Kind == Tool {
+				l.ToolsHidden = true
+				break
+			}
+		}
 		return l
 	case Exited:
 		l.Kind = StatusExited
@@ -67,9 +76,14 @@ func Status(s State, now time.Time) StatusLine {
 		l.Quiet = q
 	}
 	for _, e := range s.Entries[s.Printed.Entry:] { // entries before it are final
-		if e.Kind == Tool && e.Status == Running && !e.Final {
-			l.Tools++
-			l.Tool = e.Title
+		if e.Kind != Tool || e.Final {
+			continue
+		}
+		for _, c := range e.Calls {
+			if c.Status == Running {
+				l.Tools++
+				l.Tool = c.Label()
+			}
 		}
 	}
 	if l.Tools != 1 {

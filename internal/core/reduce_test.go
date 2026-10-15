@@ -53,9 +53,9 @@ func genSession(t *rapid.T) []step {
 				st := ToolStatus(rapid.IntRange(int(Pending), int(Failed)).Draw(t, "status"))
 				u.Status = &st
 			}
-			if rapid.Bool().Draw(t, "hasText") {
-				text := str("text")
-				u.Text = &text
+			if rapid.Bool().Draw(t, "hasOutput") {
+				out := str("output")
+				u.Output = &out
 			}
 			return u
 		},
@@ -180,8 +180,14 @@ func TestReduceTotal(t *testing.T) {
 				if e.Kind != Tool && !e.Final && e.Kind != Agent {
 					t.Fatalf("step %d: entry %d of kind %v is open", i, j, e.Kind)
 				}
-				if e.Kind == Tool && e.Final != done(e.Status) {
-					t.Fatalf("step %d: tool entry %d final %v with status %v", i, j, e.Final, e.Status)
+				if e.Kind == Tool && e.Final && !allDone(e.Calls) {
+					t.Fatalf("step %d: run %d is final with a call not done: %+v", i, j, e.Calls)
+				}
+				if e.Kind == Tool && !e.Final && j != len(s.Entries)-1 && allDone(e.Calls) {
+					t.Fatalf("step %d: run %d is closed and done but not final", i, j)
+				}
+				if e.Kind == Tool && len(e.Calls) == 0 {
+					t.Fatalf("step %d: run %d has no calls", i, j)
 				}
 			}
 			if !s.Ready && s.Printed != (Cursor{}) {
@@ -449,16 +455,64 @@ func TestStillRunningToolIsStoppedAtTurnEnd(t *testing.T) {
 	s, _ := run(Connected{At: t0}, Submit{At: t0, Text: "a"},
 		ToolStarted{At: t0, ID: "c1", Title: "echo", Status: Running},
 		PromptDone{At: t0, Stop: Cancelled})
-	if tool := s.Entries[2]; tool.Status != Stopped || !tool.Final {
-		t.Fatalf("tool %+v", tool)
+	if run := s.Entries[2]; run.Calls[0].Status != Stopped || !run.Final {
+		t.Fatalf("run %+v", run)
+	}
+}
+
+// Calls one after another make one run; anything between them starts a
+// new one. A run is final once something follows it and its calls are
+// done.
+func TestToolCallsGroupIntoRuns(t *testing.T) {
+	ok := OK
+	s, _ := run(Connected{At: t0}, Submit{At: t0, Text: "a"},
+		ToolStarted{At: t0, ID: "c1", Name: "read", Status: Running},
+		ToolStarted{At: t0, ID: "c2", Name: "read", Status: Running},
+		ToolUpdated{At: t0, ID: "c1", Status: &ok},
+		TextChunk{At: t0, MessageID: "m", Text: "Now"},
+		ToolStarted{At: t0, ID: "c3", Name: "write", Status: Running})
+	if n := len(s.Entries); n != 5 {
+		t.Fatalf("%d entries: %+v", n, s.Entries)
+	}
+	first, second := s.Entries[2], s.Entries[4]
+	if len(first.Calls) != 2 || len(second.Calls) != 1 || first.Final || second.Final {
+		t.Fatalf("runs %+v and %+v", first, second)
+	}
+	s, _ = Reduce(s, ToolUpdated{At: t0, ID: "c2", Status: &ok})
+	if !s.Entries[2].Final || s.Entries[4].Final {
+		t.Fatalf("after c2: %+v", s.Entries)
+	}
+}
+
+// ctrl+o shows the latest run in full once, and only when idle.
+func TestShowTools(t *testing.T) {
+	ok := OK
+	s, _ := run(Connected{At: t0}, Submit{At: t0, Text: "a"},
+		ToolStarted{At: t0, ID: "c1", Name: "read", Input: `{"path":"a"}`, Status: Running},
+		ShowTools{At: t0})
+	if n := len(s.Entries); n != 3 {
+		t.Fatalf("shown while busy: %+v", s.Entries)
+	}
+	s, _ = Reduce(s, ToolUpdated{At: t0, ID: "c1", Status: &ok})
+	s, _ = Reduce(s, PromptDone{At: t0, Stop: EndTurn})
+	if !Status(s, t0).ToolsHidden {
+		t.Fatal("no hint that tools can be shown")
+	}
+	s, _ = Reduce(s, ShowTools{At: t0})
+	s, _ = Reduce(s, ShowTools{At: t0})
+	if n := len(s.Entries); n != 4 || s.Entries[3].Kind != Details || s.Entries[3].Calls[0].Input != `{"path":"a"}` {
+		t.Fatalf("entries %+v", s.Entries)
+	}
+	if Status(s, t0).ToolsHidden {
+		t.Fatal("hint shown after the tools were shown")
 	}
 }
 
 func TestUpdateForUnknownToolAddsIt(t *testing.T) {
 	ok := OK
 	s, _ := run(Connected{At: t0}, Submit{At: t0, Text: "a"}, ToolUpdated{At: t0, ID: "c9", Status: &ok})
-	if tool := s.Entries[2]; tool.Title != "c9" || tool.Status != OK || !tool.Final {
-		t.Fatalf("tool %+v", tool)
+	if c := s.Entries[2].Calls[0]; c.Title != "c9" || c.Status != OK {
+		t.Fatalf("call %+v", c)
 	}
 }
 
@@ -563,6 +617,20 @@ func TestContextShare(t *testing.T) {
 		used := min(last.Used, last.Size)
 		if used <= 1<<50 && l.Context != int(used*100/last.Size) {
 			t.Fatalf("usage %+v gave %d%%", *last, l.Context)
+		}
+	})
+}
+
+// Reduce leaves the state it was given alone: replaying every step at the
+// end of a session, from the state recorded before it, gives the state
+// recorded after it. Shared slices that a later step wrote to would make
+// the two differ.
+func TestReduceKeepsOldStates(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		for i, st := range genSession(t) {
+			if again, _ := Reduce(st.before, st.event); !reflect.DeepEqual(again, st.after) {
+				t.Fatalf("step %d (%T): an old state changed", i, st.event)
+			}
 		}
 	})
 }

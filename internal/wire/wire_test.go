@@ -209,6 +209,8 @@ func TestUpdate(t *testing.T) {
 		core.TextChunk{At: t0, Text: "[resource: file:///a]"})
 	ok(Update(decode(t, `{"sessionUpdate":"tool_call","toolCallId":"c","title":"t","status":"in_progress"}`), t0),
 		core.ToolStarted{At: t0, ID: "c", Title: "t", Status: core.Running})
+	ok(Update(decode(t, `{"sessionUpdate":"tool_call","toolCallId":"c","title":"t","name":"read","rawInput":{"path":"a"},"status":"in_progress"}`), t0),
+		core.ToolStarted{At: t0, ID: "c", Name: "read", Title: "t", Input: `{"path":"a"}`, Status: core.Running})
 	ok(Update(decode(t, `{"sessionUpdate":"usage_update","used":1,"size":2}`), t0), core.Usage{At: t0, Used: 1, Size: 2})
 	ok(Update(decode(t, `{"sessionUpdate":"usage_update","used":1,"size":0,"cost":{"amount":0.42,"currency":"USD"}}`), t0),
 		core.Usage{At: t0, Used: 1, Cost: &core.Cost{Amount: 0.42, Currency: "USD"}})
@@ -216,7 +218,7 @@ func TestUpdate(t *testing.T) {
 
 	upd := Update(decode(t, `{"sessionUpdate":"tool_call_update","toolCallId":"c","status":"failed",
 		"content":[{"type":"content","content":{"type":"text","text":"\n  no such file  \nmore"}}]}`), t0).(core.ToolUpdated)
-	if upd.Text == nil || *upd.Text != "no such file" || *upd.Status != core.Failed {
+	if upd.Output == nil || *upd.Output != "\n  no such file  \nmore" || *upd.Status != core.Failed {
 		t.Errorf("update %#v", upd)
 	}
 	if n := Update(decode(t, `{"sessionUpdate":"notice","severity":"warning","title":"t",

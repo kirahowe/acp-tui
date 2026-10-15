@@ -272,14 +272,12 @@ func testToolLoop(t *testing.T, cols, rows int) {
 	h.waitAll("the directory is fine")
 	h.waitIdle()
 	all := h.all()
-	orderedIn(t, all, "› look", "Let me look.", `✓ echo {"text":"hi"}`, "✓ ls -la", "It said hi, and the directory is fine.")
+	orderedIn(t, all, "› look", "Let me look.", `✓ echo {"text":"hi"} · ls -la`, "It said hi, and the directory is fine.")
 	if st := statusLine(h.screen()); !strings.Contains(st, "12% context · $0.03") {
 		t.Fatalf("status %q, want the context use and the spend", st)
 	}
-	for _, line := range []string{`✓ echo {"text":"hi"}`, "✓ ls -la"} {
-		if n := count(all, line); n != 1 {
-			t.Fatalf("%q appears %d times:\n%s", line, n, all)
-		}
+	if n := count(all, `✓ echo {"text":"hi"} · ls -la`); n != 1 {
+		t.Fatalf("the run appears %d times:\n%s", n, all)
 	}
 	for _, l := range strings.Split(all, "\n") {
 		if strings.Contains(l, "✓") && strings.Contains(l, "Let me") {
@@ -301,15 +299,23 @@ func testToolBurstDoesNotRedraw(t *testing.T, cols, rows int) {
 	h.keys("go\r")
 	h.waitAll("All thirty read.")
 	h.waitIdle()
-	all := h.all()
-	for i := 1; i <= 30; i++ {
-		if n := count(all, fmt.Sprintf("✓ read file%d.go", i)); n != 1 {
-			t.Fatalf("tool %d shows %d times:\n%s", i, n, all)
-		}
-	}
 	if out := h.emu.written()[before:]; strings.Contains(out, ansi.EraseScreenBelow) || strings.Contains(out, ansi.EraseEntireScreen) {
 		t.Fatalf("the frame was erased and redrawn during the turn")
 	}
+	if n := count(h.all(), "✓ read file1.go · read file2.go"); n != 1 {
+		t.Fatalf("the run shows %d times:\n%s", n, h.all())
+	}
+	// ctrl+o shows every call, once. The lines reach scrollback one
+	// print at a time, so wait for the last to land.
+	h.keys("\x0f")
+	h.wait("each call once in the details", h.all, func(all string) bool {
+		for i := 1; i <= 30; i++ {
+			if count(all, fmt.Sprintf("✓ read file%d.go\n", i)) != 1 {
+				return false
+			}
+		}
+		return true
+	})
 }
 
 // The original complaint: a silent agent looked frozen. The elapsed time
@@ -502,7 +508,7 @@ func TestLongReplyKeepsView(t *testing.T) {
 	}
 	// Regression: a chunk that was one blank line was dropped, so the
 	// paragraphs ran together.
-	orderedIn(t, all, "› go\n\nParagraph 1 has", "in it.\n\nParagraph 2 has")
+	orderedIn(t, all, "› go", "╯\n\nParagraph 1 has", "in it.\n\nParagraph 2 has")
 }
 
 // The banner: --title wins, then agentInfo.title, then the agent's name;

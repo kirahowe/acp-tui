@@ -102,18 +102,22 @@ func TestStatusGolden(t *testing.T) {
 }
 
 func TestToolLinesGolden(t *testing.T) {
-	tool := func(st core.ToolStatus, title, detail string) core.Entry {
-		return core.Entry{Kind: core.Tool, ID: "c", Title: title, Status: st, Detail: detail, Final: st != core.Running && st != core.Pending}
+	call := func(st core.ToolStatus, name, input, output string) core.Call {
+		return core.Call{ID: "c", Name: name, Title: name + " " + input, Status: st, Input: input, Output: output}
 	}
+	run := func(cs ...core.Call) core.Entry { return core.Entry{Kind: core.Tool, Calls: cs} }
+	failed := call(core.Failed, "read_file", `{"path":"go.mod"}`, "no such file\nat /x")
+	ok := call(core.OK, "fact_add", `{"topic":"operator/career","text":"A long fact that goes on and on, past the edge of the screen","n":3,"tags":["a","b"]}`, "added\n\tline two\n"+strings.Repeat("more\n", 10))
 	es := []core.Entry{
-		tool(core.Pending, "bash ls -la", ""),
-		tool(core.Running, "bash ls -la", ""),
-		tool(core.OK, "bash ls -la", ""),
-		tool(core.Failed, "read_file go.mod", "no such file"),
-		tool(core.Stopped, "echo hi", ""),
-		tool(core.OK, "bash "+strings.Repeat("very long arguments ", 6), ""),
-		tool(core.OK, "検索 東京の天気を調べて、明日の予報を教えてください。それから大阪も", ""),
-		tool(core.OK, "multi\nline\x1b[31m title", ""),
+		run(call(core.Pending, "bash", `{"cmd":"ls -la"}`, "")),
+		run(call(core.Running, "bash", `{"cmd":"ls -la"}`, "")),
+		run(call(core.OK, "roles", "", "")),
+		run(failed),
+		run(call(core.Stopped, "echo", `{"text":"hi"}`, "")),
+		run(call(core.OK, "roles", "", ""), failed, ok, ok, ok, call(core.OK, "role_add", "{}", ""), call(core.OK, "role_add", "{}", ""), call(core.OK, "journal_write", "", "")),
+		run(call(core.OK, "", "", ""), core.Call{Title: "検索 東京の天気を調べて、明日の予報を教えてください。それから大阪も", Status: core.OK}),
+		run(core.Call{Title: "multi\nline\x1b[31m title", Status: core.OK}),
+		{Kind: core.Details, Calls: []core.Call{call(core.OK, "roles", "", ""), failed, ok, call(core.Stopped, "echo", "not json", "")}},
 	}
 	requireGolden(t, strings.Join(Entries(nil, es, 60, t0), "\n"))
 }

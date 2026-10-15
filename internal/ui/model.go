@@ -156,6 +156,8 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 		return core.Interrupt{At: now, InputEmpty: empty}, nil
 	case EOF:
 		return core.EOF{At: now}, nil
+	case ShowTools:
+		return core.ShowTools{At: now}, nil
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(k)

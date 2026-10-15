@@ -55,12 +55,13 @@ func TestAgentloopFixtures(t *testing.T) {
 		return core.Entry{Kind: core.Agent, ID: id, Text: text, Final: true}
 	}
 	note := func(text string) core.Entry { return core.Entry{Kind: core.Note, Text: text, Final: true} }
-	echo := func(st core.ToolStatus, detail string) core.Entry {
-		return core.Entry{Kind: core.Tool, ID: "call_1", Title: `echo {"text":"hi"}`, Status: st, Detail: detail, Final: true}
+	echo := func(st core.ToolStatus, output string) core.Entry {
+		return core.Entry{Kind: core.Tool, Final: true, Calls: []core.Call{{
+			ID: "call_1", Name: "echo", Title: `echo {"text":"hi"}`, Status: st, Input: `{"text":"hi"}`, Output: output}}}
 	}
 	cases := map[string][]core.Entry{
 		"simple_reply":       {banner, user, agent("a3", "Hello there.")},
-		"tool_loop":          {banner, user, agent("a3", "Let me echo that."), echo(core.OK, ""), agent("a7", "It said hi.")},
+		"tool_loop":          {banner, user, agent("a3", "Let me echo that."), echo(core.OK, "echo: hi"), agent("a7", "It said hi.")},
 		"retry_then_success": {banner, user, agent("a4", "Sorry for the wait.")},
 		"model_error": {banner, user,
 			{Kind: core.Note, Text: "! The model call failed: unauthorized", Detail: "invalid x-api-key", Final: true},
@@ -73,7 +74,7 @@ func TestAgentloopFixtures(t *testing.T) {
 			note("error: tool calls are waiting for a decision this agent cannot ask the client for")},
 		"refusal": {banner, user, agent("a3", "I can't help with that.\n\n"),
 			agent("a3", "The request was declined by the safety system."), note("[refusal]")},
-		"turn_limit": {banner, user, echo(core.OK, ""), note("[max turn requests]")},
+		"turn_limit": {banner, user, echo(core.OK, "echo: hi"), note("[max turn requests]")},
 	}
 	files, _ := filepath.Glob(filepath.Join("..", "..", "testdata", "agentloop", "*.jsonl"))
 	if len(files) != len(cases) {
