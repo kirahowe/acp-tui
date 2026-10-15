@@ -200,3 +200,46 @@ func TestBannerGolden(t *testing.T) {
 	}
 	requireGolden(t, strings.Join(out, "\n"))
 }
+
+func TestPermissionGolden(t *testing.T) {
+	opts := []core.PermOption{
+		{ID: "allow", Name: "Allow once", Kind: core.AllowOnce},
+		{ID: "reject", Name: "Reject", Kind: core.RejectOnce},
+	}
+	long := `{"url":"https://example.com/collect?d=` + strings.Repeat("secret", 40) + `","method":"POST","headers":{"x":"y"},` +
+		`"body":"line one\nline two","a":1,"b":2,"c":3,"d":4,"e":5,"f":6,"g":7,"h":8}`
+	ready, _ := core.Reduce(core.State{}, core.Connected{At: t0})
+	busy, _ := core.Reduce(ready, core.Submit{At: t0, Text: "send it"})
+	busy, _ = core.Reduce(busy, core.LabelsSeen{At: t0, Labels: core.Labels{Private: true, Contaminated: true}})
+	cases := map[string]core.Permission{
+		"short": {ID: 1, Name: "web_fetch", Title: `web_fetch {"url":"https://x.test"}`, Input: `{"url":"https://x.test"}`, Options: opts},
+		"long":  {ID: 1, Name: "web_fetch", Input: long, Options: opts},
+		"hostile": {ID: 1, Title: "evil\x1b[2J title", Input: "not json \x1b[31m\x07 text", Options: []core.PermOption{
+			{ID: "a", Name: "Allow\x1b[2J once", Kind: core.AllowOnce}, {ID: "b", Name: "Always", Kind: core.AllowAlways}}},
+		"bare": {ID: 1, Options: nil},
+	}
+	for name, p := range cases {
+		t.Run(name, func(t *testing.T) {
+			s, _ := core.Reduce(busy, core.PermissionAsked{At: t0, Permission: p})
+			s, _ = core.Reduce(s, core.PermissionAsked{At: t0, Permission: p})
+			for _, w := range []int{60, 30} {
+				f := View(s, "› ", "", t0.Add(time.Second), w, 24)
+				t.Run(strconv.Itoa(w), func(t *testing.T) { requireGolden(t, f.Content) })
+			}
+		})
+	}
+	t.Run("request_entry", func(t *testing.T) {
+		requireGolden(t, strings.Join(Entries(nil, []core.Entry{{Kind: core.Request, Text: "web_fetch", Detail: long, Final: true}}, 50, t0), "\n"))
+	})
+}
+
+func TestBadgesGolden(t *testing.T) {
+	var out []string
+	for _, l := range []core.Labels{{}, {Private: true}, {Contaminated: true}, {Private: true, Contaminated: true}} {
+		for _, w := range []int{60, 20} {
+			out = append(out, StatusText(core.StatusLine{Kind: core.StatusIdle, Labels: l, Context: 12, HasContext: true}, "ctrl+j for a new line", t0, w))
+		}
+	}
+	out = append(out, StatusText(core.StatusLine{Kind: core.StatusAsking, Asks: 2, Labels: core.Labels{Private: true}}, "", t0, 60))
+	requireGolden(t, strings.Join(out, "\n"))
+}

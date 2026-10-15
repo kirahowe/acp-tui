@@ -27,6 +27,10 @@ type Agent struct {
 	proc    *stdio.ClientProcess
 	emit    func(core.Event)
 	session acp.SessionId // set before Connected is emitted
+
+	mu      sync.Mutex
+	nextAsk uint64
+	asks    map[uint64]chan core.AnswerPermission // requests waiting for the person
 }
 
 // Start launches command in dir and begins the handshake in the
@@ -119,14 +123,51 @@ type client struct{ a *Agent }
 // handlers before that turn's Prompt returns, so every update reaches the
 // core before its PromptDone.
 func (c client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
-	c.a.emit(wire.Update(n, time.Now()))
+	now := time.Now()
+	if l, ok := wire.Labels(n, now); ok {
+		c.a.emit(l)
+	}
+	c.a.emit(wire.Update(n, now))
 	return nil
 }
 
-// RequestPermission refuses, since acp-tui cannot ask yet, and tells the
-// user.
-func (c client) RequestPermission(_ context.Context, req acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
-	resp, notice := wire.ChoosePermission(req, time.Now())
-	c.a.emit(notice)
-	return resp, nil
+// RequestPermission hands the request to the UI and waits for the
+// person's answer, which arrives through Answer. A request nobody
+// answers before the connection ends is cancelled.
+func (c client) RequestPermission(ctx context.Context, req acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	a := c.a
+	reply := make(chan core.AnswerPermission, 1)
+	a.mu.Lock()
+	a.nextAsk++
+	id := a.nextAsk
+	if a.asks == nil {
+		a.asks = map[uint64]chan core.AnswerPermission{}
+	}
+	a.asks[id] = reply
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		delete(a.asks, id)
+		a.mu.Unlock()
+	}()
+	a.emit(wire.Permission(req, id, time.Now()))
+	select {
+	case ans := <-reply:
+		return wire.Outcome(ans), nil
+	case <-ctx.Done():
+		return wire.Outcome(core.AnswerPermission{ID: id, Cancelled: true}), nil
+	}
+}
+
+// Answer replies to a permission request. It does not block.
+func (a *Agent) Answer(ans core.AnswerPermission) {
+	a.mu.Lock()
+	reply := a.asks[ans.ID]
+	a.mu.Unlock()
+	if reply != nil {
+		select {
+		case reply <- ans:
+		default: // answered already
+		}
+	}
 }

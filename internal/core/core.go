@@ -193,6 +193,9 @@ const (
 	Banner
 	// Details is a run of tool calls shown in full, at the user's request.
 	Details
+	// Request is a permission request's whole input, shown at the user's
+	// request: Text names the call, Detail is its arguments.
+	Request
 )
 
 // Call is one tool call.
@@ -266,6 +269,13 @@ type State struct {
 	Queue   []string // submitted while starting or busy, oldest first
 	Ready   bool     // the terminal has drawn its first frame
 	Exit    string   // why the agent went away, once Exited
+	// Labels is everything the session has seen, as far as the agent has
+	// said. It only grows.
+	Labels Labels
+	// Asks is the permission requests waiting for the person, oldest
+	// first; the first is on offer and Pick is its highlighted option.
+	Asks []Permission
+	Pick int
 }
 
 // Reduce applies one event. It never mutates s's slices in place, so a
@@ -278,6 +288,7 @@ func Reduce(s State, e Event) (State, []Effect) {
 		}
 	}
 	s.Queue = append([]string(nil), s.Queue...)
+	s.Asks = append([]Permission(nil), s.Asks...)
 	r := &reducer{s: s}
 	r.apply(e)
 	return r.s, r.fx
@@ -312,6 +323,8 @@ func (r *reducer) apply(e Event) {
 				s.Spend = &c
 			}
 		}
+	case LabelsSeen, PermissionAsked, PermissionMove, PermissionConfirm, PermissionQuick, PermissionCancel, PermissionShowAll:
+		r.permission(e)
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:
 		if s.Phase == Busy {
 			s.Turn.LastEvent = e.at()
@@ -344,6 +357,7 @@ func (r *reducer) apply(e Event) {
 		}
 	case AgentExited:
 		if s.Phase != Exited {
+			r.cancelAsks()
 			r.closeAll()
 			s.Phase = Exited
 			s.Exit = e.Err
@@ -369,15 +383,18 @@ func (r *reducer) apply(e Event) {
 		switch {
 		case s.Phase == Busy && !s.Turn.Cancelling:
 			s.Turn.Cancelling = true
+			r.cancelAsks()
 			r.emit(SendCancel{})
 		case s.Phase == Idle && !e.InputEmpty:
 			// The shell clears the input box; there is nothing to stop.
 		default:
+			r.cancelAsks()
 			r.emit(Quit{})
 		}
 	case ShowTools:
 		r.showTools()
 	case EOF:
+		r.cancelAsks()
 		if s.Phase == Busy && !s.Turn.Cancelling {
 			s.Turn.Cancelling = true
 			r.emit(SendCancel{})
@@ -540,6 +557,7 @@ func (r *reducer) closeAll() {
 }
 
 func (r *reducer) endTurn(at time.Time, sendNext bool, note string) {
+	r.cancelAsks()
 	r.closeAll()
 	if note != "" {
 		r.add(Entry{Kind: Note, Text: note, Final: true})

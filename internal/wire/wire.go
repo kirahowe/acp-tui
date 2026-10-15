@@ -139,27 +139,67 @@ func Response(r acp.PromptResponse, err error, at time.Time) core.Event {
 	return core.PromptFailed{At: at, Message: msg}
 }
 
-// ChoosePermission refuses a permission request, since the MVP cannot ask
-// the user, and returns a notice so the user sees what was refused. It
-// picks the first reject_once option, else reject_always, else cancels.
-func ChoosePermission(req acp.RequestPermissionRequest, at time.Time) (acp.RequestPermissionResponse, core.Event) {
-	title := string(req.ToolCall.ToolCallId)
-	if req.ToolCall.Title != nil && *req.ToolCall.Title != "" {
-		title = *req.ToolCall.Title
+// Permission translates a session/request_permission. id is the shell's
+// handle for answering it.
+func Permission(req acp.RequestPermissionRequest, id uint64, at time.Time) core.PermissionAsked {
+	p := core.Permission{ID: id, Input: rawJSON(req.ToolCall.RawInput)}
+	if n := req.ToolCall.Name; n != nil {
+		p.Name = *n
 	}
-	notice := core.Notice{At: at, Severity: "warning", Title: "denied: " + title + " (acp-tui cannot ask yet)"}
-	for _, kind := range []acp.PermissionOptionKind{acp.PermissionOptionKindRejectOnce, acp.PermissionOptionKindRejectAlways} {
-		for _, o := range req.Options {
-			if o.Kind == kind {
-				return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{
-					Selected: &acp.RequestPermissionOutcomeSelected{OptionId: o.OptionId, Outcome: "selected"},
-				}}, notice
-			}
-		}
+	if t := req.ToolCall.Title; t != nil {
+		p.Title = *t
+	}
+	for _, o := range req.Options {
+		p.Options = append(p.Options, core.PermOption{ID: string(o.OptionId), Name: o.Name, Kind: core.OptionKind(o.Kind)})
+	}
+	return core.PermissionAsked{At: at, Permission: p}
+}
+
+// Outcome is the reply to a session/request_permission: the chosen
+// option, or cancelled.
+func Outcome(a core.AnswerPermission) acp.RequestPermissionResponse {
+	if a.Cancelled {
+		return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{
+			Cancelled: &acp.RequestPermissionOutcomeCancelled{Outcome: "cancelled"},
+		}}
 	}
 	return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{
-		Cancelled: &acp.RequestPermissionOutcomeCancelled{Outcome: "cancelled"},
-	}}, notice
+		Selected: &acp.RequestPermissionOutcomeSelected{OptionId: acp.PermissionOptionId(a.OptionID), Outcome: "selected"},
+	}}
+}
+
+// labelsKey is where agentloop puts the session's labels in _meta.
+const labelsKey = "agentloop/labels"
+
+// Labels reads the session's labels from the _meta of a tool_call,
+// tool_call_update or usage_update. ok is false when the update carries
+// none, or they are malformed. A label this client does not know shows
+// nowhere: the agent is the one that fails closed on it.
+func Labels(n acp.SessionNotification, at time.Time) (core.LabelsSeen, bool) {
+	u := n.Update
+	var meta map[string]json.RawMessage
+	switch {
+	case u.ToolCall != nil:
+		meta = u.ToolCall.Meta
+	case u.ToolCallUpdate != nil:
+		meta = u.ToolCallUpdate.Meta
+	case u.UsageUpdate != nil:
+		meta = u.UsageUpdate.Meta
+	}
+	var names []string
+	if json.Unmarshal(meta[labelsKey], &names) != nil {
+		return core.LabelsSeen{}, false
+	}
+	e := core.LabelsSeen{At: at}
+	for _, name := range names {
+		switch name {
+		case "private":
+			e.Labels.Private = true
+		case "contaminated":
+			e.Labels.Contaminated = true
+		}
+	}
+	return e, true
 }
 
 func messageID(id *acp.MessageId) string {

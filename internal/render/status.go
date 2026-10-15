@@ -51,6 +51,12 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 	case core.StatusCancelling:
 		lead = " "
 		add("cancelling")
+	case core.StatusAsking:
+		lead = "?"
+		add("waiting for you")
+		if l.Asks > 1 {
+			add(strconv.Itoa(l.Asks) + " requests")
+		}
 	}
 	if l.Kind != core.StatusIdle && l.Kind != core.StatusStarting && l.Kind != core.StatusExited {
 		add(Duration(l.Elapsed))
@@ -79,13 +85,28 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 	if len(parts) == 0 {
 		parts = []string{""}
 	}
-	line := lead + " " + parts[0]
+	line := lead + " " + badges(l.Labels) + parts[0]
 	for _, p := range parts[1:] {
 		if next := line + " · " + p; ansi.StringWidth(next) <= width {
 			line = next
 		}
 	}
 	return styled(faint, truncate(line, width))
+}
+
+// badges shows the session's labels in front of the status, so they are
+// always on screen: private in bold, contaminated in reverse video, which
+// is the one that must not be missed. Each returns to faint, the style the
+// whole line is in, rather than resetting.
+func badges(l core.Labels) string {
+	var b string
+	if l.Private {
+		b += sgr(bold) + "[private]" + sgr(faint) + " "
+	}
+	if l.Contaminated {
+		b += sgr(bold|reverse) + " contaminated " + sgr(faint) + " "
+	}
+	return b
 }
 
 // Money formats a cost to the cent: $1.23 in US dollars, else the

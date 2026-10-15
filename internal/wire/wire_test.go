@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -227,31 +226,66 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
-func TestChoosePermission(t *testing.T) {
-	title := "rm -rf"
-	opts := []acp.PermissionOption{
-		{Kind: acp.PermissionOptionKindAllowOnce, OptionId: "allow"},
-		{Kind: acp.PermissionOptionKindRejectAlways, OptionId: "never"},
-		{Kind: acp.PermissionOptionKindRejectOnce, OptionId: "no"},
+func TestPermission(t *testing.T) {
+	var req acp.RequestPermissionRequest
+	if err := json.Unmarshal([]byte(`{"sessionId":"s","toolCall":{"toolCallId":"call_1","name":"web_fetch",
+		"title":"web_fetch {\"url\":\"https://x.test\"}","rawInput":{"url":"https://x.test"}},
+		"options":[{"optionId":"allow","name":"Allow once","kind":"allow_once"},
+		{"optionId":"reject","name":"Reject","kind":"reject_once"},{"optionId":"x","name":"Odd","kind":"future_kind"}]}`), &req); err != nil {
+		t.Fatal(err)
 	}
-	cases := []struct {
-		opts []acp.PermissionOption
-		want string
+	got := Permission(req, 7, t0)
+	want := core.PermissionAsked{At: t0, Permission: core.Permission{
+		ID: 7, Name: "web_fetch", Title: `web_fetch {"url":"https://x.test"}`, Input: `{"url":"https://x.test"}`,
+		Options: []core.PermOption{{ID: "allow", Name: "Allow once", Kind: core.AllowOnce}, {ID: "reject", Name: "Reject", Kind: core.RejectOnce}, {ID: "x", Name: "Odd", Kind: "future_kind"}},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v\nwant %#v", got, want)
+	}
+	if k := got.Options[2].Kind; k.Allows() || k.Rejects() {
+		t.Errorf("an unknown kind %q counts as allow or reject", k)
+	}
+	// Bare request: no name, no title, no input.
+	bare := Permission(acp.RequestPermissionRequest{ToolCall: acp.ToolCallUpdate{ToolCallId: "c"}}, 1, t0)
+	if bare.Name != "" || bare.Title != "" || bare.Input != "" || len(bare.Options) != 0 {
+		t.Errorf("bare request %#v", bare)
+	}
+}
+
+func TestOutcome(t *testing.T) {
+	cases := map[string]core.AnswerPermission{
+		`{"optionId":"allow","outcome":"selected"}`: {OptionID: "allow"},
+		`{"outcome":"cancelled"}`:                   {Cancelled: true, OptionID: "ignored"},
+	}
+	for want, a := range cases {
+		b, err := json.Marshal(Outcome(a).Outcome)
+		if err != nil || string(b) != want {
+			t.Errorf("outcome %s (%v), want %s", b, err, want)
+		}
+	}
+}
+
+func TestLabels(t *testing.T) {
+	for name, c := range map[string]struct {
+		update string
+		want   core.Labels
+		ok     bool
 	}{
-		{opts, `{"optionId":"no","outcome":"selected"}`},
-		{opts[:2], `{"optionId":"never","outcome":"selected"}`},
-		{opts[:1], `{"outcome":"cancelled"}`},
-		{nil, `{"outcome":"cancelled"}`},
-	}
-	for _, c := range cases {
-		resp, notice := ChoosePermission(acp.RequestPermissionRequest{Options: c.opts, ToolCall: acp.ToolCallUpdate{ToolCallId: "c", Title: &title}}, t0)
-		b, err := json.Marshal(resp.Outcome)
-		if err != nil || string(b) != c.want {
-			t.Errorf("outcome %s (%v), want %s", b, err, c.want)
-		}
-		if n := notice.(core.Notice); !strings.Contains(n.Title, "rm -rf") {
-			t.Errorf("notice %+v", n)
-		}
+		"tool_call":   {`{"sessionUpdate":"tool_call","toolCallId":"c","title":"t","_meta":{"agentloop/labels":["private"]}}`, core.Labels{Private: true}, true},
+		"update":      {`{"sessionUpdate":"tool_call_update","toolCallId":"c","_meta":{"agentloop/labels":["contaminated","private"]}}`, core.Labels{Private: true, Contaminated: true}, true},
+		"usage":       {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":[]}}`, core.Labels{}, true},
+		"unknown":     {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":["secret"]}}`, core.Labels{}, true},
+		"none":        {`{"sessionUpdate":"usage_update","used":1,"size":2}`, core.Labels{}, false},
+		"other_meta":  {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"x":1}}`, core.Labels{}, false},
+		"malformed":   {`{"sessionUpdate":"usage_update","used":1,"size":2,"_meta":{"agentloop/labels":"private"}}`, core.Labels{}, false},
+		"not_carried": {`{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"x"},"_meta":{"agentloop/labels":["private"]}}`, core.Labels{}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, ok := Labels(decode(t, c.update), t0)
+			if ok != c.ok || got.Labels != c.want {
+				t.Fatalf("got %+v %v, want %+v %v", got.Labels, ok, c.want, c.ok)
+			}
+		})
 	}
 }
 

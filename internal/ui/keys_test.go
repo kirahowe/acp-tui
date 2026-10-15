@@ -4,16 +4,20 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/kirahowe/acp-tui/internal/core"
 	"pgregory.net/rapid"
 )
 
 type nopConn struct{}
 
-func (nopConn) Prompt(string) {}
-func (nopConn) Cancel()       {}
-func (nopConn) Shutdown()     {}
+func (nopConn) Prompt(string)                {}
+func (nopConn) Cancel()                      {}
+func (nopConn) Answer(core.AnswerPermission) {}
+func (nopConn) Shutdown()                    {}
 
 func genKey(t *rapid.T) tea.KeyPressMsg {
 	code := rapid.OneOf(
@@ -89,6 +93,56 @@ func TestPrintChunks(t *testing.T) {
 		}
 		if !reflect.DeepEqual(back, lines) {
 			t.Fatalf("chunks give %q, want %q", back, lines)
+		}
+	})
+}
+
+// P-perm5: while a request waits, a key is either one of the request
+// keys or swallowed; it never edits the input.
+func TestAskKeys(t *testing.T) {
+	for key, want := range map[string]AskAction{
+		"y": AskAllow, "n": AskReject, "enter": AskConfirm, "esc": AskCancel, "v": AskShowAll,
+		"up": AskUp, "down": AskDown, "ctrl+c": AskInterrupt, "a": AskNone, "space": AskNone, "ctrl+j": AskNone,
+	} {
+		var k tea.KeyPressMsg
+		switch key {
+		case "enter":
+			k = tea.KeyPressMsg{Code: tea.KeyEnter}
+		case "esc":
+			k = tea.KeyPressMsg{Code: tea.KeyEscape}
+		case "up":
+			k = tea.KeyPressMsg{Code: tea.KeyUp}
+		case "down":
+			k = tea.KeyPressMsg{Code: tea.KeyDown}
+		case "ctrl+c":
+			k = tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+		case "ctrl+j":
+			k = tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}
+		case "space":
+			k = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
+		default:
+			k = tea.KeyPressMsg{Code: rune(key[0]), Text: key}
+		}
+		if got := ClassifyAsk(k); got != want {
+			t.Errorf("%s: %v, want %v", key, got, want)
+		}
+	}
+}
+
+func TestAskNeverTouchesTheInput(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		m := New(nopConn{}, "")
+		var model any = m
+		model, _ = model.(Model).Update(EventMsg{Event: core.PermissionAsked{At: time.Now(), Permission: core.Permission{ID: 1,
+			Options: []core.PermOption{{ID: "a", Kind: core.AllowOnce}}}}})
+		for range rapid.IntRange(1, 20).Draw(t, "keys") {
+			if len(model.(Model).core.Asks) == 0 {
+				break // a key answered it; the keys are the input's again
+			}
+			model, _ = model.(Model).Update(genKey(t))
+			if v := model.(Model).input.Value(); v != "" {
+				t.Fatalf("input %q", v)
+			}
 		}
 	})
 }

@@ -16,6 +16,7 @@ const (
 	StatusRunning
 	StatusRetrying
 	StatusCancelling
+	StatusAsking // a permission request waits for the person
 	StatusExited
 )
 
@@ -41,11 +42,13 @@ type StatusLine struct {
 	// ToolsHidden says ShowTools would show something: the agent is idle
 	// and the latest run of tool calls is not shown in full.
 	ToolsHidden bool
+	Labels      Labels // what the session has seen
+	Asks        int    // permission requests waiting, including the one on offer
 }
 
 // Status describes s at time now.
 func Status(s State, now time.Time) StatusLine {
-	l := StatusLine{Queued: len(s.Queue), Spend: s.Spend}
+	l := StatusLine{Queued: len(s.Queue), Spend: s.Spend, Labels: s.Labels, Asks: len(s.Asks)}
 	if u := s.Usage; u != nil && u.Size > 0 {
 		l.HasContext = true
 		// used*100 can overflow 64 bits, so multiply into 128.
@@ -92,6 +95,9 @@ func Status(s State, now time.Time) StatusLine {
 	switch {
 	case t.Cancelling:
 		l.Kind = StatusCancelling
+	case len(s.Asks) > 0:
+		l.Kind = StatusAsking
+		l.Quiet = 0 // the silence is the person's, not the agent's
 	case t.Retry != nil && t.Retry.At.After(now):
 		l.Kind = StatusRetrying
 		l.RetryIn = t.Retry.At.Sub(now)

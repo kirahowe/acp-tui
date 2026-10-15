@@ -25,7 +25,8 @@ type Frame struct {
 // never changes height (Bubble Tea redraws the whole frame when it does).
 // From the top: the transcript not yet in scrollback, queued messages,
 // the input box, and the status line. input is the text area as already
-// drawn, InputWidth(width) wide.
+// drawn, InputWidth(width) wide. While a permission request waits, it
+// takes the input box's place.
 //
 // The transcript is bottom-aligned, with blank rows above it while it is
 // short. Final lines that no longer fit go to Print. Lines that do not
@@ -45,15 +46,28 @@ func View(s core.State, input, hint string, now time.Time, width, height int) Fr
 		}
 		bottom = append(bottom, styled(faint, truncate("queued › "+first, width)))
 	}
-	bottom = append(bottom, "") // the input box stands apart from the text above
 	inputLines := strings.Split(input, "\n")
-	inputAt := len(bottom)
-	x := 0
-	if boxed(width) {
-		inputAt++ // the top border
-		x = 2
+	inputAt, x := 0, 0
+	if len(s.Asks) > 0 {
+		// The request takes the input box's place: every key is spoken for
+		// while it waits, and the room is better spent on the request. Its
+		// input shows in what is left of the screen after the status line,
+		// the blank row above and the request's own frame.
+		p := s.Asks[0]
+		overhead := len(bottom) + 1 + 1 + 4 + len(p.Options)
+		bottom = append(bottom, "")
+		bottom = append(bottom, permissionBox(s, now, width, min(permissionBody, max(height-1-overhead, 1)))...)
+		inputLines = []string{""}
+		inputAt = -1
+	} else {
+		bottom = append(bottom, "") // the input box stands apart from the text above
+		inputAt = len(bottom)
+		if boxed(width) {
+			inputAt++ // the top border
+			x = 2
+		}
+		bottom = append(bottom, box("", inputLines, width)...)
 	}
-	bottom = append(bottom, box("", inputLines, width)...)
 	bottom = append(bottom, StatusText(core.Status(s, now), hint, now, width))
 
 	rows := max(height-1, 1)

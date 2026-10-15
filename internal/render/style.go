@@ -23,6 +23,7 @@ const (
 	bold style = 1 << iota
 	faint
 	italic
+	reverse
 )
 
 // sgr is the sequence that switches the terminal to exactly st.
@@ -39,6 +40,9 @@ func sgr(st style) string {
 	}
 	if st&italic != 0 {
 		codes += ";3"
+	}
+	if st&reverse != 0 {
+		codes += ";7"
 	}
 	return "\x1b[" + codes + "m"
 }
@@ -64,6 +68,8 @@ func parseSGR(seq string) style {
 			st |= faint
 		case 3:
 			st |= italic
+		case 7:
+			st |= reverse
 		}
 	}
 	return st

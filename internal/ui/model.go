@@ -19,6 +19,7 @@ import (
 type Conn interface {
 	Prompt(text string)
 	Cancel()
+	Answer(core.AnswerPermission)
 	Shutdown()
 }
 
@@ -108,6 +109,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ev, cmd = m.key(msg, now)
 		cmds = append(cmds, cmd)
 	case tea.PasteMsg:
+		if len(m.core.Asks) > 0 {
+			break // nothing pasted while a request waits goes anywhere
+		}
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		cmds = append(cmds, cmd)
@@ -137,6 +141,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // key turns a key press into an event, or passes it to the input box.
 func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
+	if len(m.core.Asks) > 0 {
+		return askKey(ClassifyAsk(k), now), nil
+	}
 	empty := m.input.Value() == ""
 	switch Classify(k, empty) {
 	case Send:
@@ -164,6 +171,31 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 	return nil, cmd
 }
 
+// askKey is the event for a key pressed while a permission request waits.
+func askKey(a AskAction, now time.Time) core.Event {
+	switch a {
+	case AskUp:
+		return core.PermissionMove{At: now, Delta: -1}
+	case AskDown:
+		return core.PermissionMove{At: now, Delta: 1}
+	case AskConfirm:
+		return core.PermissionConfirm{At: now}
+	case AskAllow:
+		return core.PermissionQuick{At: now, Kind: core.AllowOnce}
+	case AskReject:
+		return core.PermissionQuick{At: now, Kind: core.RejectOnce}
+	case AskCancel:
+		return core.PermissionCancel{At: now}
+	case AskShowAll:
+		return core.PermissionShowAll{At: now}
+	case AskInterrupt:
+		return core.Interrupt{At: now, InputEmpty: true}
+	case AskEOF:
+		return core.EOF{At: now}
+	}
+	return nil
+}
+
 // effect carries out one effect of Reduce.
 func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 	switch f := f.(type) {
@@ -171,6 +203,8 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 		m.conn.Prompt(f.Text)
 	case core.SendCancel:
 		m.conn.Cancel()
+	case core.AnswerPermission:
+		m.conn.Answer(f)
 	case core.RestoreInput:
 		text := f.Text
 		if v := m.input.Value(); v != "" {
@@ -249,7 +283,7 @@ func (m Model) frame(now time.Time) render.Frame {
 func (m Model) View() tea.View {
 	f := m.frame(time.Now())
 	v := tea.NewView(f.Content)
-	if c := m.input.Cursor(); c != nil {
+	if c := m.input.Cursor(); c != nil && len(m.core.Asks) == 0 {
 		c.Position.X += f.InputX
 		c.Position.Y += f.InputY
 		v.Cursor = c

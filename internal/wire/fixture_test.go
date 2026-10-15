@@ -105,3 +105,37 @@ func TestAgentloopRetryCountdown(t *testing.T) {
 		}
 	})
 }
+
+// A trace whose updates carry labels: they reach the core, only grow, and
+// show on the status line.
+func TestReplayLabels(t *testing.T) {
+	trace := `{"sessionUpdate":"tool_call","toolCallId":"c1","title":"memo_read","status":"pending","_meta":{"agentloop/labels":["private"]}}
+{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"completed","_meta":{"agentloop/labels":["private"]}}
+{"sessionUpdate":"tool_call","toolCallId":"c2","title":"web_fetch","status":"pending","_meta":{"agentloop/labels":["contaminated","private"]}}
+{"sessionUpdate":"usage_update","used":1,"size":10,"_meta":{"agentloop/labels":[]}}
+{"stopReason":"end_turn"}
+`
+	events, err := Replay([]byte(trace), t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := core.Reduce(core.State{}, core.Connected{At: t0})
+	s, _ = core.Reduce(s, core.Submit{At: t0, Text: "go"})
+	var seen []core.Labels
+	for _, e := range events {
+		s, _ = core.Reduce(s, e)
+		seen = append(seen, s.Labels)
+	}
+	want := core.Labels{Private: true, Contaminated: true}
+	if s.Labels != want {
+		t.Fatalf("labels %+v, want %+v", s.Labels, want)
+	}
+	for i := 1; i < len(seen); i++ {
+		if seen[i-1].Private && !seen[i].Private || seen[i-1].Contaminated && !seen[i].Contaminated {
+			t.Fatalf("labels shrank at event %d: %+v then %+v", i, seen[i-1], seen[i])
+		}
+	}
+	if seen[1].Contaminated {
+		t.Errorf("contaminated before it was reported: %+v", seen[1])
+	}
+}

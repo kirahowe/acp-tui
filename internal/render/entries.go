@@ -49,6 +49,8 @@ func entry(e core.Entry, width int, now time.Time) []string {
 		return detailLines(e.Calls, width, now)
 	case core.Banner:
 		return bannerLines(e, width)
+	case core.Request:
+		return requestLines(e, width)
 	}
 	text := e.Text
 	if e.Detail != "" {

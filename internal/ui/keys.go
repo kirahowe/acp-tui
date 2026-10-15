@@ -52,3 +52,46 @@ func NewlineHint(c Caps) string {
 	}
 	return "ctrl+j for a new line"
 }
+
+// AskAction is what a key press does while a permission request waits.
+type AskAction int
+
+const (
+	AskNone      AskAction = iota // swallowed: the input box is not in play
+	AskUp                         // highlight the previous option
+	AskDown                       // highlight the next option
+	AskConfirm                    // answer with the highlighted option
+	AskAllow                      // answer with the first allow_once
+	AskReject                     // answer with the first reject_once
+	AskCancel                     // answer cancelled
+	AskShowAll                    // put the whole input in the transcript
+	AskInterrupt                  // Ctrl-C: stop the turn, which cancels the request
+	AskEOF                        // Ctrl-D
+)
+
+// ClassifyAsk decides what a key press does while a request waits. Every
+// key is swallowed but these, so nothing typed reaches the input box and
+// no Enter can send a prompt. It is pure.
+func ClassifyAsk(k tea.KeyPressMsg) AskAction {
+	switch k.String() {
+	case "up", "k", "shift+tab":
+		return AskUp
+	case "down", "j", "tab":
+		return AskDown
+	case "enter":
+		return AskConfirm
+	case "y", "Y":
+		return AskAllow
+	case "n", "N":
+		return AskReject
+	case "esc":
+		return AskCancel
+	case "v":
+		return AskShowAll
+	case "ctrl+c":
+		return AskInterrupt
+	case "ctrl+d":
+		return AskEOF
+	}
+	return AskNone
+}
