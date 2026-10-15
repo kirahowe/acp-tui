@@ -95,6 +95,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
+		m.input.MaxHeight = max(m.h/2-2, 1) // grow to about half the screen
 		m.input.SetWidth(render.InputWidth(m.width()))
 		if !m.sized {
 			m.sized = true

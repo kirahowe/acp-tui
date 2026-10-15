@@ -455,6 +455,26 @@ func testNewlineKeys(t *testing.T, cols, rows int) {
 	}
 }
 
+// The input box grows with what is typed, to about half the screen,
+// and only then scrolls; the whole message is sent.
+func TestInputGrows(t *testing.T) {
+	h := start(t, "simple.jsonl", 80, 40)
+	h.waitIdle()
+	var lines []string
+	for i := 1; i <= 12; i++ {
+		lines = append(lines, fmt.Sprintf("item %d", i))
+	}
+	h.keys(strings.Join(lines, "\n"))
+	screen := h.waitScreen("twelve rows of input", func(s string) bool { return strings.Contains(s, "│   item 12") })
+	for _, l := range lines {
+		if !strings.Contains(screen, l+" ") {
+			t.Fatalf("%q is not on screen:\n%s", l, screen)
+		}
+	}
+	h.keys("\r")
+	h.wait("the prompt", func() string { return strings.Join(h.prompts(), "|") }, func(s string) bool { return s == strings.Join(lines, "\n") })
+}
+
 // Bubble Tea #1822 and #1736: a reply three screens long, printed at
 // 40×10, keeps the view on screen and puts each line in scrollback once.
 func TestLongReplyKeepsView(t *testing.T) {
