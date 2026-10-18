@@ -52,6 +52,11 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 	if t := core.EscapeLabel(p.Title); p.Name != "" && t != "" && t != title {
 		title += " · " + t
 	}
+	// The title can quote the input (agentloop puts the arguments in
+	// it), so its links defang as the input's do.
+	if p.Labels.Contaminated || s.Labels.Contaminated {
+		title = Defang(title)
+	}
 	var lines []string
 	for _, l := range wrapAll([]string{title}, inner) {
 		lines = append(lines, styled(bold, l))
