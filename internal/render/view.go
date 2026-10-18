@@ -18,6 +18,8 @@ type Frame struct {
 	// go into scrollback; after them the transcript resumes at PrintTo.
 	Print   []string
 	PrintTo core.Cursor
+	// DetailMax is how far the pane's detail view can scroll as drawn.
+	DetailMax int
 }
 
 // View lays out the live part of the screen. It always fills height-1
@@ -34,7 +36,37 @@ type Frame struct {
 // change, are cut, and a faint "… N lines above" line takes their place.
 // So are lines hidden only because the input box has grown: they come
 // back when it shrinks.
+//
+// With a workspace pane (see pane.go) the frame is the same, except that
+// on a wide screen the pane stands to the right of it, and on a narrow one,
+// while the pane has focus, the pane takes the transcript's place. The
+// lines that go to scrollback are the transcript's own either way.
 func View(s core.State, input, hint string, now time.Time, width, height int) Frame {
+	if Side(width) {
+		f := view(s, input, hint, now, MainWidth(width), height, nil, false)
+		rows := max(height-1, 1)
+		pane, mx := paneRender(s, now, PaneWidth(width), rows)
+		f.Content = strings.Join(joinColumns(strings.Split(f.Content, "\n"), pane, MainWidth(width)), "\n")
+		f.DetailMax = mx
+		return f
+	}
+	if s.Pane.Focus {
+		mx := 0
+		f := view(s, input, hint, now, width, height, func(room int) []string {
+			var lines []string
+			lines, mx = paneRender(s, now, width, room)
+			return lines
+		}, true)
+		f.DetailMax = mx
+		return f
+	}
+	return view(s, input, hint, now, width, height, nil, true)
+}
+
+// view lays out the frame at width. over, when set, draws the rows
+// the transcript would have had; paneHint says the status line names the
+// pane's key.
+func view(s core.State, input, hint string, now time.Time, width, height int, over func(room int) []string, paneHint bool) Frame {
 	lines, at := transcript(s, width, now)
 
 	var bottom []string
@@ -66,10 +98,17 @@ func View(s core.State, input, hint string, now time.Time, width, height int) Fr
 		}
 		bottom = append(bottom, box("", inputLines, width)...)
 	}
-	bottom = append(bottom, StatusText(core.Status(s, now), hint, now, width))
+	st := core.Status(s, now)
+	st.PaneHint = paneHint && st.PaneItems > 0 // with nothing to see, the status line stays as it was
+	bottom = append(bottom, StatusText(st, hint, now, width))
 
 	rows := max(height-1, 1)
 	room := rows - len(bottom)
+	if over != nil {
+		// Nothing goes to scrollback while the pane covers the transcript.
+		lines = over(max(room, 0))
+		at = make([]place, len(lines))
+	}
 	// Lines go to scrollback only once they would not fit with a one-row
 	// input, so typing a long message does not push the transcript away.
 	f := Frame{PrintTo: s.Printed}

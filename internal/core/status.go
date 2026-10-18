@@ -45,11 +45,15 @@ type StatusLine struct {
 	Labels      Labels // what the session has seen
 	TrustNext   bool   // the next paste goes in as trusted text
 	Asks        int    // permission requests waiting, including the one on offer
+	// PaneItems is how many items the workspace pane lists. PaneHint says
+	// the pane is a toggled overlay, so the status line names its key.
+	PaneItems int
+	PaneHint  bool
 }
 
 // Status describes s at time now.
 func Status(s State, now time.Time) StatusLine {
-	l := StatusLine{Queued: len(s.Queue), Spend: s.Spend, Labels: s.Labels, Asks: len(s.Asks), TrustNext: s.TrustNext}
+	l := StatusLine{Queued: len(s.Queue), Spend: s.Spend, Labels: s.Labels, Asks: len(s.Asks), TrustNext: s.TrustNext, PaneItems: len(PaneItems(s))}
 	if u := s.Usage; u != nil && u.Size > 0 {
 		l.HasContext = true
 		// used*100 can overflow 64 bits, so multiply into 128.

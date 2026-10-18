@@ -17,6 +17,9 @@ type nopConn struct{}
 func (nopConn) Prompt(string, []core.Attachment) {}
 func (nopConn) Cancel()                          {}
 func (nopConn) Answer(core.AnswerPermission)     {}
+func (nopConn) Items()                           {}
+func (nopConn) Resolve(string)                   {}
+func (nopConn) Trust(string, string, string)     {}
 func (nopConn) Shutdown()                        {}
 
 func genKey(t *rapid.T) tea.KeyPressMsg {

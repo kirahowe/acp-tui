@@ -97,6 +97,7 @@ func Update(n acp.SessionNotification, at time.Time) core.Event {
 		if c.Content != nil {
 			// A call can arrive already finished, with its output.
 			e.Output = contentText(c.Content)
+			e.Displays = Displays(c.Content)
 		}
 		return e
 	case u.ToolCallUpdate != nil:
@@ -113,6 +114,7 @@ func Update(n acp.SessionNotification, at time.Time) core.Event {
 		if c.Content != nil {
 			out := contentText(c.Content)
 			e.Output = &out
+			e.Displays = Displays(c.Content)
 		}
 		return e
 	case u.UsageUpdate != nil:
@@ -155,7 +157,9 @@ func Response(r acp.PromptResponse, err error, at time.Time) core.Event {
 // Permission translates a session/request_permission. id is the shell's
 // handle for answering it.
 func Permission(req acp.RequestPermissionRequest, id uint64, at time.Time) core.PermissionAsked {
-	p := core.Permission{ID: id, Input: rawJSON(req.ToolCall.RawInput)}
+	p := core.Permission{ID: id, Input: rawJSON(req.ToolCall.RawInput), CallID: string(req.ToolCall.ToolCallId),
+		Preview: Preview(req.ToolCall.Content)}
+	p.Labels, _ = labelsOf(req.ToolCall.Meta)
 	if n := req.ToolCall.Name; n != nil {
 		p.Name = *n
 	}
@@ -204,20 +208,39 @@ func Labels(n acp.SessionNotification, at time.Time) (core.LabelsSeen, bool) {
 		// read.
 		meta = u.SessionInfoUpdate.Meta
 	}
+	l, ok := labelsOf(meta)
+	return core.LabelsSeen{At: at, Labels: l}, ok
+}
+
+// PermissionLabels reads the session's labels from the _meta of a
+// session/request_permission's tool call.
+func PermissionLabels(req acp.RequestPermissionRequest, at time.Time) (core.LabelsSeen, bool) {
+	l, ok := labelsOf(req.ToolCall.Meta)
+	return core.LabelsSeen{At: at, Labels: l}, ok
+}
+
+// labelsOf reads agentloop's labels from a _meta map.
+func labelsOf(meta map[string]json.RawMessage) (core.Labels, bool) {
 	var names []string
 	if json.Unmarshal(meta[labelsKey], &names) != nil {
-		return core.LabelsSeen{}, false
+		return core.Labels{}, false
 	}
-	e := core.LabelsSeen{At: at}
+	return labelNames(names), true
+}
+
+// labelNames is the labels a list of names says. A name this client does
+// not know is left out.
+func labelNames(names []string) core.Labels {
+	var l core.Labels
 	for _, name := range names {
 		switch name {
 		case "private":
-			e.Labels.Private = true
+			l.Private = true
 		case "contaminated":
-			e.Labels.Contaminated = true
+			l.Contaminated = true
 		}
 	}
-	return e, true
+	return l
 }
 
 func messageID(id *acp.MessageId) string {
@@ -270,7 +293,7 @@ func blockText(b acp.ContentBlock) string {
 func contentText(content []acp.ToolCallContent) string {
 	var parts []string
 	for _, c := range content {
-		if c.Content != nil && c.Content.Content.Text != nil {
+		if c.Content != nil && c.Content.Content.Text != nil && !isRelayBlock(c.Content.Content.Text) {
 			parts = append(parts, c.Content.Content.Text.Text)
 		}
 	}

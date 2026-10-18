@@ -85,7 +85,27 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 	if n := len(s.Asks) - 1; n > 0 {
 		hint += fmt.Sprintf(" · %d more waiting", n)
 	}
-	body := min(permissionBody, max(room-2-len(lines)-len(opts)-1, 1))
+	budget := max(room-2-len(lines)-len(opts)-1, 1)
+	// Relay's preview of what the call will do goes above the input, cut
+	// the same way. It is relay's text, not the model's, but it can carry
+	// untrusted words, so its links defang once the session is
+	// contaminated.
+	if p.Preview != "" {
+		def := p.Labels.Contaminated || s.Labels.Contaminated
+		pv := textLines(p.Preview, def, inner)
+		show := min(permissionBody, max(budget/2, 1))
+		for i, l := range pv {
+			if i == show-1 && len(pv) > show {
+				lines = append(lines, styled(faint, truncate(fmt.Sprintf("… %d more lines · v to see all", len(pv)-i), inner)))
+				show = i + 1
+				break
+			}
+			lines = append(lines, l)
+		}
+		lines = append(lines, newDomainsLine(s, def, inner, p.Preview)...)
+		budget = max(budget-show-1, 1)
+	}
+	body := min(permissionBody, budget)
 	in := wrapAll(core.FaithfulLines(p.Input), inner)
 	if len(in) == 0 {
 		in = []string{"(no input)"}
@@ -112,6 +132,11 @@ func requestLines(e core.Entry, width int) []string {
 			lead = styled(faint, "  ? ")
 		}
 		out = append(out, lead+l)
+	}
+	if e.Preview != "" {
+		for _, l := range textLines(e.Preview, e.PreviewDefang, max(width-6, 1)) {
+			out = append(out, "      "+l)
+		}
 	}
 	for _, l := range wrapAll(core.FaithfulLines(e.Detail), max(width-6, 1)) {
 		out = append(out, styled(faint, "      "+l))

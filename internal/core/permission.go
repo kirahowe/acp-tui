@@ -47,8 +47,14 @@ type Permission struct {
 	ID          uint64
 	Name, Title string
 	Input       string // the call's arguments as JSON, when the agent sent them
-	Options     []PermOption
-	Since       time.Time // when it became the one on offer; see ArmDelay
+	// CallID is the tool call's id. Preview is relay's description of
+	// what the call will do, when it sent one (the text block marked
+	// _meta["relay/preview"]), and Labels the session labels on the call.
+	CallID  string
+	Preview string
+	Labels  Labels
+	Options []PermOption
+	Since   time.Time // when it became the one on offer; see ArmDelay
 }
 
 // Label is what to call the call: the tool's name, else the title.
@@ -172,6 +178,11 @@ func (r *reducer) permission(e Event) {
 			s.Turn.LastEvent = e.At
 			s.Turn.Retry = nil
 		}
+		// The request takes the keys, so the pane lets go of them.
+		s.Pane.Focus = false
+		if t := s.Pane.Trust; t != nil && !t.Sent {
+			s.Pane.Trust = nil
+		}
 		p := e.Permission
 		p.Options = onceOptions(p.Options)
 		if len(s.Asks) == 0 {
@@ -179,6 +190,7 @@ func (r *reducer) permission(e Event) {
 			s.Pick = DefaultPick(p.Options)
 		}
 		s.Asks = append(s.Asks, p)
+		r.proposalAsked(p)
 	case PermissionMove:
 		if n := len(s.Asks); n > 0 && len(s.Asks[0].Options) > 0 {
 			m := len(s.Asks[0].Options)
@@ -201,7 +213,8 @@ func (r *reducer) permission(e Event) {
 	case PermissionShowAll:
 		if len(s.Asks) > 0 {
 			p := s.Asks[0]
-			r.add(Entry{Kind: Request, Text: p.Label(), Detail: p.Input, Final: true})
+			r.add(Entry{Kind: Request, Text: p.Label(), Detail: p.Input, Preview: p.Preview,
+				PreviewDefang: p.Labels.Contaminated || s.Labels.Contaminated, Final: true})
 		}
 	}
 }
@@ -212,21 +225,25 @@ func (r *reducer) answer(at time.Time, i int) {
 	s := &r.s
 	p := s.Asks[0]
 	s.Asks = s.Asks[1:]
-	verb := "cancelled"
+	verb, status := "cancelled", StatusCancelledAsk
 	if i >= 0 {
 		o := p.Options[i]
 		r.emit(AnswerPermission{ID: p.ID, OptionID: o.ID})
 		switch {
 		case o.Kind.Allows():
-			verb = "allowed"
+			verb, status = "allowed", StatusAllowed
+			// Approving a call vouches for the places it names.
+			r.addDomains(p.Input, p.Preview)
 		case o.Kind.Rejects():
-			verb = "rejected"
+			verb, status = "rejected", StatusRejected
 		default:
 			verb = "chose " + EscapeLabel(o.Name) + " for"
 		}
 	} else {
 		r.emit(AnswerPermission{ID: p.ID, Cancelled: true})
 	}
+	r.proposalAnswered(p.ID, status)
+	r.refresh()
 	r.add(Entry{Kind: Note, Text: verb + ": " + EscapeLabel(p.Label()), Final: true})
 	r.next(at)
 }
@@ -244,6 +261,10 @@ func (r *reducer) next(at time.Time) {
 func (r *reducer) cancelAsks() {
 	for _, p := range r.s.Asks {
 		r.emit(AnswerPermission{ID: p.ID, Cancelled: true})
+		r.proposalAnswered(p.ID, StatusCancelledAsk)
+	}
+	if len(r.s.Asks) > 0 {
+		r.refresh()
 	}
 	r.s.Asks = nil
 	r.s.Pick = 0

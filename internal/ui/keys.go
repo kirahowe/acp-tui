@@ -1,6 +1,10 @@
 package ui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/kirahowe/acp-tui/internal/core"
+)
 
 // Caps is what the terminal told us about its keyboard.
 type Caps struct {
@@ -20,6 +24,7 @@ const (
 	EOF                       // Ctrl-D on an empty input
 	ShowTools                 // Ctrl-O: the latest tool calls in full
 	TrustPaste                // Ctrl-T: the next paste goes in as trusted text
+	TogglePane                // Ctrl-X: focus the workspace pane
 )
 
 // Classify decides what a key press does. It is pure.
@@ -40,6 +45,8 @@ func Classify(k tea.KeyPressMsg, inputEmpty bool) Action {
 		return ShowTools
 	case "ctrl+t":
 		return TrustPaste
+	case "ctrl+x":
+		return TogglePane
 	case "ctrl+d":
 		if inputEmpty {
 			return EOF
@@ -97,4 +104,31 @@ func ClassifyAsk(k tea.KeyPressMsg) AskAction {
 		return AskEOF
 	}
 	return AskNone
+}
+
+// ClassifyPane decides what a key press does while the workspace pane has
+// focus. Every key is swallowed, so nothing typed reaches the input box. It
+// is pure.
+func ClassifyPane(k tea.KeyPressMsg) core.PaneAction {
+	switch k.String() {
+	case "up", "k", "shift+tab":
+		return core.PaneUp
+	case "down", "j", "tab":
+		return core.PaneDown
+	case "pgup":
+		return core.PagePrev
+	case "pgdown", "space":
+		return core.PageNext
+	case "enter":
+		return core.PaneEnter
+	case "esc":
+		return core.PaneEsc
+	case "ctrl+x":
+		return core.PaneToggle
+	case "t":
+		return core.PaneTrust
+	case "y", "Y":
+		return core.PaneYes
+	}
+	return core.PaneOther
 }

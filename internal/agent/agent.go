@@ -5,6 +5,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +32,11 @@ type Agent struct {
 	mu      sync.Mutex
 	nextAsk uint64
 	asks    map[uint64]chan core.AnswerPermission // requests waiting for the person
+
+	// Calls to relay's extension methods run one at a time, in the order
+	// they were asked, so an older answer cannot overwrite a newer one.
+	extQueue   []func()
+	extRunning bool
 }
 
 // Start launches command in dir and begins the handshake in the
@@ -150,7 +156,11 @@ func (c client) RequestPermission(ctx context.Context, req acp.RequestPermission
 		delete(a.asks, id)
 		a.mu.Unlock()
 	}()
-	a.emit(wire.Permission(req, id, time.Now()))
+	now := time.Now()
+	if l, ok := wire.PermissionLabels(req, now); ok {
+		a.emit(l)
+	}
+	a.emit(wire.Permission(req, id, now))
 	select {
 	case ans := <-reply:
 		return wire.Outcome(ans), nil
@@ -170,4 +180,68 @@ func (a *Agent) Answer(ans core.AnswerPermission) {
 		default: // answered already
 		}
 	}
+}
+
+// extTimeout is how long a call to relay's extension methods may take.
+const extTimeout = 15 * time.Second
+
+// enqueue runs f after the calls queued before it.
+func (a *Agent) enqueue(f func()) {
+	a.mu.Lock()
+	a.extQueue = append(a.extQueue, f)
+	start := !a.extRunning
+	a.extRunning = true
+	a.mu.Unlock()
+	if start {
+		go a.extLoop()
+	}
+}
+
+func (a *Agent) extLoop() {
+	for {
+		a.mu.Lock()
+		if len(a.extQueue) == 0 {
+			a.extRunning = false
+			a.mu.Unlock()
+			return
+		}
+		f := a.extQueue[0]
+		a.extQueue = a.extQueue[1:]
+		a.mu.Unlock()
+		f()
+	}
+}
+
+// call sends an extension method to the agent and waits for the answer.
+func (a *Agent) call(method string, params any) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), extTimeout)
+	defer cancel()
+	return a.proc.Connection.CallExtension(ctx, method, params)
+}
+
+// Items asks relay for the workspace's items and emits ItemsLoaded. A
+// plain agent answers method-not-found. It does not block.
+func (a *Agent) Items() {
+	a.enqueue(func() {
+		raw, err := a.call(wire.MethodItems, wire.ItemsParams(a.session))
+		a.emit(wire.Items(raw, err, time.Now()))
+	})
+}
+
+// Resolve asks relay about a reference and emits CitationResolved. It
+// does not block.
+func (a *Agent) Resolve(ref string) {
+	a.enqueue(func() {
+		raw, err := a.call(wire.MethodResolve, wire.ResolveParams(a.session, ref))
+		a.emit(wire.Resolution(ref, raw, err, time.Now()))
+	})
+}
+
+// Trust asks relay to trust the doc at path as it was listed and emits
+// TrustDone. It does not block.
+func (a *Agent) Trust(path, version, sha string) {
+	a.enqueue(func() {
+		raw, err := a.call(wire.MethodTrust, wire.TrustParams(a.session, path, version, sha))
+		a.emit(wire.TrustOutcome(path, raw, err, time.Now()))
+	})
 }

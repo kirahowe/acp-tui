@@ -385,16 +385,29 @@ func TestCancelOnce(t *testing.T) {
 }
 
 // run feeds events to Reduce from the zero state and returns the final
-// state and every effect.
+// state and every effect, bar the requests to relay (pane_test.go looks
+// at those).
 func run(events ...Event) (State, []Effect) {
 	var s State
 	var all []Effect
 	for _, e := range events {
 		var fx []Effect
 		s, fx = Reduce(s, e)
-		all = append(all, fx...)
+		all = append(all, noRelay(fx)...)
 	}
 	return s, all
+}
+
+func noRelay(fx []Effect) []Effect {
+	var out []Effect
+	for _, f := range fx {
+		switch f.(type) {
+		case RequestItems, RequestResolve, SendTrust:
+		default:
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func TestQueuedMessagesAreJoinedIntoOnePrompt(t *testing.T) {

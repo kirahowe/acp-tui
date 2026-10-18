@@ -58,6 +58,9 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 			add(strconv.Itoa(l.Asks) + " requests")
 		}
 	}
+	if l.PaneHint {
+		add(fmt.Sprintf("%s workspace (%d)", PaneKey, l.PaneItems))
+	}
 	if l.Kind != core.StatusIdle && l.Kind != core.StatusStarting && l.Kind != core.StatusExited {
 		add(Duration(l.Elapsed))
 	}

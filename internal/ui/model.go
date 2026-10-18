@@ -20,6 +20,11 @@ type Conn interface {
 	Prompt(text string, atts []core.Attachment)
 	Cancel()
 	Answer(core.AnswerPermission)
+	// Items, Resolve and Trust call relay's extension methods; their
+	// answers come back as events.
+	Items()
+	Resolve(ref string)
+	Trust(path, version, sha string)
 	Shutdown()
 }
 
@@ -97,7 +102,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 		m.input.MaxHeight = max(m.h/2-2, 1) // grow to about half the screen
-		m.input.SetWidth(render.InputWidth(m.width()))
+		m.input.SetWidth(render.InputWidth(render.MainWidth(m.width())))
 		if !m.sized {
 			m.sized = true
 			cmds = append(cmds, tea.Tick(readyDelay, func(time.Time) tea.Msg { return readyMsg{} }))
@@ -109,8 +114,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ev, cmd = m.key(msg, now)
 		cmds = append(cmds, cmd)
 	case tea.PasteMsg:
-		if len(m.core.Asks) > 0 {
-			break // nothing pasted while a request waits goes anywhere
+		if len(m.core.Asks) > 0 || m.core.Pane.Focus {
+			break // nothing pasted while a request waits or the pane has the keys goes anywhere
 		}
 		ev = core.Pasted{At: now, Text: msg.Content}
 	case EventMsg:
@@ -133,7 +138,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.effect(f, now))
 		}
 	}
-	cmds = append(cmds, m.print(now), m.tick())
+	cmds = append(cmds, m.print(now), m.tick(now))
 	return m, tea.Batch(cmds...)
 }
 
@@ -143,6 +148,9 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 		return askKey(ClassifyAsk(k), now), nil
 	}
 	empty := m.input.Value() == ""
+	if m.core.Pane.Focus {
+		return m.paneKey(k, empty, now), nil
+	}
 	switch Classify(k, empty) {
 	case Send:
 		text := m.input.Value()
@@ -165,10 +173,36 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 		return core.ShowTools{At: now}, nil
 	case TrustPaste:
 		return core.ToggleTrustedPaste{At: now}, nil
+	case TogglePane:
+		return core.PaneKey{At: now, Action: core.PaneToggle}, nil
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(k)
 	return nil, cmd
+}
+
+// paneKey is the event for a key pressed while the workspace pane has
+// focus. The input box never sees it. Ctrl-C still stops a running turn
+// and, otherwise, leaves the pane; Ctrl-D quits only from an empty input.
+func (m *Model) paneKey(k tea.KeyPressMsg, empty bool, now time.Time) core.Event {
+	switch k.String() {
+	case "ctrl+c":
+		if m.core.Phase == core.Busy {
+			return core.Interrupt{At: now, InputEmpty: true}
+		}
+		return core.PaneKey{At: now, Action: core.PaneToggle}
+	case "ctrl+d":
+		if empty {
+			return core.EOF{At: now}
+		}
+		return nil
+	}
+	a := ClassifyPane(k)
+	e := core.PaneKey{At: now, Action: a}
+	if m.core.Pane.Detail {
+		e.Max = m.frame(now).DetailMax
+	}
+	return e
 }
 
 // askKey is the event for a key pressed while a permission request waits.
@@ -205,6 +239,12 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 		m.conn.Cancel()
 	case core.AnswerPermission:
 		m.conn.Answer(f)
+	case core.RequestItems:
+		m.conn.Items()
+	case core.RequestResolve:
+		m.conn.Resolve(f.Ref)
+	case core.SendTrust:
+		m.conn.Trust(f.Path, f.Version, f.SHA256)
 	case core.InsertInput:
 		m.input.InsertString(f.Text)
 	case core.RestoreInput:
@@ -265,12 +305,19 @@ func (m *Model) print(now time.Time) tea.Cmd {
 
 // tick keeps the status line moving while the agent works, and stops when
 // it is idle, so an idle screen is never redrawn.
-func (m *Model) tick() tea.Cmd {
-	if m.ticking || (m.core.Phase != core.Busy && m.core.Phase != core.Starting) {
+func (m *Model) tick(now time.Time) tea.Cmd {
+	if m.ticking || (m.core.Phase != core.Busy && m.core.Phase != core.Starting && !m.trustArming(now)) {
 		return nil
 	}
 	m.ticking = true
 	return tea.Tick(tickEvery, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+// trustArming says a trust confirmation is waiting out its delay, so the
+// pane must redraw when it arms.
+func (m *Model) trustArming(now time.Time) bool {
+	t := m.core.Pane.Trust
+	return t != nil && !t.Sent && now.Sub(t.Since) < core.ArmDelay+tickEvery
 }
 
 // width is the width everything is drawn at: one column narrower than
@@ -285,7 +332,7 @@ func (m Model) frame(now time.Time) render.Frame {
 func (m Model) View() tea.View {
 	f := m.frame(time.Now())
 	v := tea.NewView(f.Content)
-	if c := m.input.Cursor(); c != nil && len(m.core.Asks) == 0 {
+	if c := m.input.Cursor(); c != nil && len(m.core.Asks) == 0 && !m.core.Pane.Focus {
 		c.Position.X += f.InputX
 		c.Position.Y += f.InputY
 		v.Cursor = c

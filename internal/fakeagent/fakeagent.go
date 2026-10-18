@@ -16,6 +16,28 @@
 //	                                "permission <outcome JSON>". The options
 //	                                default to allow_once and reject_once.
 //
+//	{"request_permission": {..., "content": [...], "_meta": {...}}}
+//	                                content and _meta go on the request's
+//	                                tool call, so a script can give a
+//	                                request relay's preview.
+//
+//	{"extension": {"method": "_relay/items", "result": {...}}}
+//	                                answer a relay extension method. These
+//	                                lines are not steps: they are read when
+//	                                the script loads, and an agent without
+//	                                one for a method answers method-not-
+//	                                found, as a plain agentloop does.
+//	                                "error": {"code": ..., "message": ...}
+//	                                answers with an error instead. For
+//	                                _relay/resolve, "ref" picks the
+//	                                reference it answers. Several lines for
+//	                                _relay/items answer in turn, the last
+//	                                one from then on; "after_trust": true
+//	                                marks the answer that takes over once
+//	                                a _relay/trust has succeeded. Each call
+//	                                is logged as "extension <method>
+//	                                <params>".
+//
 // So an agentloop fixture is a script as it stands. After a cancel the
 // prompt answers "cancelled" at once, and the script carries on after
 // the next stopReason or error. A prompt that finds the script used up
@@ -45,7 +67,17 @@ type step struct {
 	Permission    json.RawMessage   `json:"request_permission"`
 	Title         string            `json:"title"`
 	Description   string            `json:"description"`
+	Extension     *extension        `json:"extension"`
 	raw           json.RawMessage
+}
+
+// extension is a canned answer to an extension method.
+type extension struct {
+	Method     string            `json:"method"`
+	Ref        string            `json:"ref"`
+	AfterTrust bool              `json:"after_trust"`
+	Result     json.RawMessage   `json:"result"`
+	Error      *acp.RequestError `json:"error"`
 }
 
 // Info is what the agent says about itself: Title goes in agentInfo,
@@ -65,6 +97,9 @@ type Agent struct {
 	steps     []step
 	pos       int
 	cancelled chan struct{}
+	ext       []extension
+	itemsCall int  // how many _relay/items calls have been answered
+	trusted   bool // a _relay/trust has succeeded
 }
 
 // New parses a script. log receives one line per prompt and cancel.
@@ -79,6 +114,10 @@ func New(script []byte, log io.Writer, info Info) (*Agent, error) {
 			return nil, fmt.Errorf("script line %d: %w", i+1, err)
 		}
 		s.raw = json.RawMessage(line)
+		if s.Extension != nil {
+			a.ext = append(a.ext, *s.Extension)
+			continue
+		}
 		a.steps = append(a.steps, s)
 	}
 	return a, nil
@@ -237,11 +276,13 @@ func (a *Agent) send(ctx context.Context, session acp.SessionId, update json.Raw
 // does not abort the wait: the test wants to see how the client answered.
 func (a *Agent) askPermission(ctx context.Context, session acp.SessionId, spec json.RawMessage) error {
 	var p struct {
-		ToolCallID string          `json:"toolCallId"`
-		Name       *string         `json:"name"`
-		Title      *string         `json:"title"`
-		RawInput   any             `json:"rawInput"`
-		Options    json.RawMessage `json:"options"`
+		ToolCallID string                     `json:"toolCallId"`
+		Name       *string                    `json:"name"`
+		Title      *string                    `json:"title"`
+		RawInput   any                        `json:"rawInput"`
+		Options    json.RawMessage            `json:"options"`
+		Content    []acp.ToolCallContent      `json:"content"`
+		Meta       map[string]json.RawMessage `json:"_meta"`
 	}
 	if err := json.Unmarshal(spec, &p); err != nil {
 		return err
@@ -262,7 +303,8 @@ func (a *Agent) askPermission(ctx context.Context, session acp.SessionId, spec j
 	resp, err := conn.RequestPermission(context.WithoutCancel(ctx), acp.RequestPermissionRequest{
 		SessionId: session,
 		Options:   opts,
-		ToolCall:  acp.ToolCallUpdate{ToolCallId: acp.ToolCallId(p.ToolCallID), Name: p.Name, Title: p.Title, RawInput: p.RawInput},
+		ToolCall: acp.ToolCallUpdate{ToolCallId: acp.ToolCallId(p.ToolCallID), Name: p.Name, Title: p.Title, RawInput: p.RawInput,
+			Content: p.Content, Meta: p.Meta},
 	})
 	if err != nil {
 		return err
@@ -294,4 +336,62 @@ func Serve(ctx context.Context, a *Agent, conn *acp.AgentSideConnection) error {
 		return nil
 	}
 	return err
+}
+
+// HandleExtensionMethod answers relay's extension methods from the
+// script's canned answers, and logs the call.
+func (a *Agent) HandleExtensionMethod(_ context.Context, method string, params json.RawMessage) (any, error) {
+	a.logf("extension %s %s", method, params)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var want *extension
+	switch method {
+	case "_relay/items":
+		var turn, base []extension
+		for _, e := range a.ext {
+			if e.Method == method {
+				if e.AfterTrust {
+					turn = append(turn, e)
+				} else {
+					base = append(base, e)
+				}
+			}
+		}
+		list := base
+		if a.trusted && len(turn) > 0 {
+			list = turn
+		}
+		if len(list) > 0 {
+			want = &list[min(a.itemsCall, len(list)-1)]
+			a.itemsCall++
+		}
+	case "_relay/resolve":
+		var p struct {
+			Ref string `json:"ref"`
+		}
+		_ = json.Unmarshal(params, &p)
+		for i, e := range a.ext {
+			if e.Method == method && (e.Ref == "" || e.Ref == p.Ref) {
+				want = &a.ext[i]
+				break
+			}
+		}
+	default:
+		for i, e := range a.ext {
+			if e.Method == method {
+				want = &a.ext[i]
+				break
+			}
+		}
+	}
+	if want == nil {
+		return nil, acp.NewMethodNotFound(method)
+	}
+	if want.Error != nil {
+		return nil, want.Error
+	}
+	if method == "_relay/trust" {
+		a.trusted = true
+	}
+	return want.Result, nil
 }

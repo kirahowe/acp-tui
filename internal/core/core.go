@@ -50,15 +50,19 @@ type (
 		ID, Name, Title, Kind, Input string
 		Output                       string // when it arrives finished
 		Status                       ToolStatus
+		// Displays is what the call showed the operator, apart from its
+		// output (see Display).
+		Displays []Display
 	}
 	// ToolUpdated changes only the fields that are not nil.
 	ToolUpdated struct {
-		At     time.Time
-		ID     string
-		Title  *string
-		Status *ToolStatus
-		Input  *string
-		Output *string // the call's text content
+		At       time.Time
+		ID       string
+		Title    *string
+		Status   *ToolStatus
+		Input    *string
+		Output   *string // the call's text content
+		Displays []Display
 	}
 	Notice struct {
 		At                      time.Time
@@ -237,6 +241,10 @@ type Entry struct {
 	// Defang says the session was contaminated when the agent wrote this,
 	// so URLs in it show defanged. See render.Defang.
 	Defang bool
+	// Preview is relay's description of a request, shown above its
+	// input, and PreviewDefang says its URLs show defanged.
+	Preview       string
+	PreviewDefang bool
 }
 
 // Cost is an amount of money: the session's spend so far.
@@ -296,6 +304,8 @@ type State struct {
 	Pastes    []Paste
 	NextPaste int
 	TrustNext bool
+	// Pane is the workspace pane.
+	Pane Pane
 }
 
 // Reduce applies one event. It never mutates s's slices in place, so a
@@ -310,6 +320,9 @@ func Reduce(s State, e Event) (State, []Effect) {
 	s.Queue = append([]string(nil), s.Queue...)
 	s.Asks = append([]Permission(nil), s.Asks...)
 	s.Pastes = append([]Paste(nil), s.Pastes...)
+	s.Pane.Server = append([]Item(nil), s.Pane.Server...)
+	s.Pane.Local = append([]Item(nil), s.Pane.Local...)
+	s.Pane.Cites = append([]Citation(nil), s.Pane.Cites...)
 	r := &reducer{s: s}
 	r.apply(e)
 	return r.s, r.fx
@@ -331,6 +344,7 @@ func (r *reducer) apply(e Event) {
 			s.Embedded = e.Embedded
 			s.Agent = e.Agent
 			r.add(banner(s.Title, e))
+			r.refresh()
 			r.sendQueue(e.At)
 		}
 	case Usage:
@@ -349,6 +363,8 @@ func (r *reducer) apply(e Event) {
 		r.pasted(e)
 	case ToggleTrustedPaste:
 		s.TrustNext = !s.TrustNext
+	case ItemsLoaded, CitationResolved, TrustDone, PaneKey:
+		r.pane(e)
 	case LabelsSeen, PermissionAsked, PermissionMove, PermissionConfirm, PermissionQuick, PermissionCancel, PermissionShowAll:
 		r.permission(e)
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:
@@ -444,13 +460,16 @@ func (r *reducer) agentEvent(e Event) {
 	case TextChunk:
 		s.Turn.Activity = Writing
 		r.appendText(e.MessageID, e.Text)
+		r.citeLatest()
 	case ThoughtChunk:
 		s.Turn.Activity = Thinking
 	case ToolStarted:
 		s.Turn.Activity = Waiting
 		r.startCall(Call{ID: e.ID, Name: e.Name, Title: e.Title, Status: e.Status, Input: e.Input, Output: e.Output})
+		r.displays(e.ID, e.Displays)
 	case ToolUpdated:
 		s.Turn.Activity = Waiting
+		r.displays(e.ID, e.Displays)
 		i, j := r.findCall(e.ID)
 		if i < 0 {
 			// Some agents may skip tool_call; show the update anyway.
