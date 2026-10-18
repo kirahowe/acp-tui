@@ -295,7 +295,8 @@ func TestContaminatedItemsAreMarkedAndDefanged(t *testing.T) {
 		it.Labels.Contaminated = true
 		it.Kind = core.ShownItem
 		it.Title = rapid.SampledFrom([]string{"Title", "see https://evil.test/a?d=1", "www.evil.test x"}).Draw(t, "title")
-		it.Text = "go to " + rapid.SampledFrom([]string{"https://evil.test/x", "ftp://evil.test", "http://a.b.c/d", "www.e.test"}).Draw(t, "url") + " now"
+		it.Text = "go to " + rapid.SampledFrom([]string{"https://evil.test/x", "ftp://evil.test", "http://a.b.c/d", "www.e.test",
+			"https://a.test/?next=www.evil.test/?d=SECRET", "https://a.test/r?u=https://evil.test/x"}).Draw(t, "url") + " now"
 		it.Sources = []core.Source{{Title: "s", Ref: "web:https://evil.test/src"}}
 		s := paneState(true, it)
 		s.Pane.Relay = true

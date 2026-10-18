@@ -12,12 +12,14 @@ import (
 
 func TestDefangKnown(t *testing.T) {
 	for in, want := range map[string]string{
-		"see https://evil.com/x?d=secret.1 now": "see hxxps://evil[.]com/x?d=secret.1 now",
-		"HTTP://a.b.c":                          "hxxp://a[.]b[.]c",
-		"ftp://h.example/f":                     "ftp[:]//h[.]example/f",
-		"www.example.com/a":                     "www[.]example[.]com/a",
-		"[x](https://a.io/p)":                   "[x](hxxps://a[.]io/p)",
-		"no links here. Really.":                "no links here. Really.",
+		"see https://evil.com/x?d=secret.1 now": "see hxxps://evil[.]com/x?d=secret[.]1 now",
+		// Regression: a second host in the query stays broken too.
+		"https://a.test/?next=www.evil.test/?d=SECRET": "hxxps://a[.]test/?next=www[.]evil[.]test/?d=SECRET",
+		"HTTP://a.b.c":           "hxxp://a[.]b[.]c",
+		"ftp://h.example/f":      "ftp[:]//h[.]example/f",
+		"www.example.com/a":      "www[.]example[.]com/a",
+		"[x](https://a.io/p)":    "[x](hxxps://a[.]io/p)",
+		"no links here. Really.": "no links here. Really.",
 	} {
 		if got := Defang(in); got != want {
 			t.Errorf("Defang(%q) = %q, want %q", in, got, want)

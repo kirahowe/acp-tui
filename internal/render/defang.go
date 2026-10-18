@@ -12,15 +12,15 @@ import (
 // When the session is contaminated, text the agent wrote may have been
 // shaped by an outsider, and a link in it is a way to carry data out: a
 // click sends the URL, query string and all. So such text shows its URLs
-// defanged, https://evil.com/x?d=1 as hxxps://evil[.]com/x?d=1, which no
-// terminal turns into a link. Nothing here ever writes an OSC 8
+// defanged, https://evil.com/x.html?d=1 as hxxps://evil[.]com/x[.]html?d=1,
+// which no terminal turns into a link. Nothing here ever writes an OSC 8
 // hyperlink; sanitize drops the ESC that would start one.
 
 // urlRE finds a URL: a scheme and "://", or "www.", then everything up to
 // a space or a character that usually closes a URL in prose or markdown.
 var urlRE = regexp.MustCompile("(?i)(?:[a-z][a-z0-9+.\\-]*://|www\\.)[^\\s<>\"'`)\\]\\x1b]*")
 
-// Defang defangs every URL in s. The host loses its dots to [.], http and
+// Defang defangs every URL in s. Every dot in it becomes [.], http and
 // https become hxxp and hxxps, and any other scheme's :// becomes [:]//,
 // so no "://" is left. s should be sanitized first.
 func Defang(s string) string {
@@ -39,12 +39,10 @@ func Defang(s string) string {
 				scheme += "[:]//"
 			}
 		}
-		host, path := rest, ""
-		if i := strings.IndexAny(rest, "/?#"); i >= 0 {
-			host, path = rest[:i], rest[i:]
-		}
-		host = strings.ReplaceAll(strings.ReplaceAll(host, "[.]", "."), ".", "[.]")
-		return scheme + host + path
+		// Every dot loses its power, in the path and query too, so a
+		// second host riding in the URL (?next=www.evil.test/?d=1) is
+		// broken as well as the first, as relay's own defang does.
+		return scheme + strings.ReplaceAll(strings.ReplaceAll(rest, "[.]", "."), ".", "[.]")
 	})
 	// A "://" can be left that the match did not own (it came from the
 	// middle of another URL's host); none survives but hxxp(s)://.
