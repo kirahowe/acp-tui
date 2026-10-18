@@ -1,0 +1,24 @@
+␛[0;1mworkspace␛[m␛[0;2m (3)␛[m                         ␛[0;1mctrl+x␛[m
+  ␛[0;1;7m untrusted ␛[m send_campaign␛[0;2m · ␛[mwaiting
+␛[0;2m  proposal · private · contaminated␛[m
+␛[0;2m    Sends **Venue list** to Kira only.␛[m
+␛[0;2m    See␛[m
+␛[0;2m    hxxps://send[.]example[.]net/campaign␛[m
+
+▸ ␛[0;1;7m untrusted ␛[m ␛[0;1mConcert venues near the hall␛[m
+␛[0;2m  shown · private · contaminated␛[m
+␛[0;2m  Three venues are open late.␛[m
+  ↳ Venue list␛[0;2m ·␛[m
+    ␛[0;2m␛[mweb:hxxps://example[.]org/venues
+  ↳ ␛[0;1m[new domain]␛[m Hall site␛[0;2m ·␛[m
+    ␛[0;2m␛[mweb:hxxps://hall[.]example[.]com/about
+
+  Hall address
+␛[0;2m  shown · private · trusted␛[m
+␛[0;2m  1 Main Street␛[m
+
+␛[0;2m↓ 6 below␛[m
+  ␛[0;1mrelay trust doc shown/2026-10-18/t1.md␛[m
+  the doc changed since it was listed
+␛[0;1mTrust failed.␛[m
+␛[0;2m↑↓ select · enter open · t trust · esc back␛[m

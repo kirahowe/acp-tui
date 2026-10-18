@@ -1,0 +1,30 @@
+␛[0;1mworkspace␛[m␛[0;2m (3)␛[m                         ␛[0;1mctrl+x␛[m
+␛[0;1mConcert venues near the hall␛[m
+  ␛[0;1;7m untrusted ␛[m␛[0;2m outside text: links are␛[m
+  ␛[0;2mdefanged␛[m
+␛[0;2m  private · contaminated␛[m
+  ␛[0;2mshown:2026-10-18/t1 · shown/2026-10-␛[m
+  ␛[0;2m18/t1.md · v412␛[m
+
+  Three venues are open late.
+  Details: hxxps://example[.]org/venues
+  
+  A second paragraph with more words so that
+  the text wraps in a narrow pane.
+
+␛[0;2msources␛[m
+  ↳ Venue list␛[0;2m ·␛[m
+    ␛[0;2m␛[mweb:hxxps://example[.]org/venues
+  ↳ ␛[0;1m[new domain]␛[m Hall site␛[0;2m ·␛[m
+    ␛[0;2m␛[mweb:hxxps://hall[.]example[.]com/about
+  ␛[0;1mnew domain: ␛[mhall[.]example[.]com
+
+
+
+
+
+
+
+
+
+␛[0;2m↑↓ scroll · t trust · esc back␛[m

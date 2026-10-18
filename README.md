@@ -70,6 +70,54 @@ writes OSC 8 hyperlinks. The request box shows its input exactly, URLs
 included. A paste while a request waits is dropped. acp-tui never sends
 `resource_link` blocks.
 
+## The workspace pane
+
+Agents that run under relay put work in front of you as they go: what a
+tool found, the calls waiting for your approval, and the documents the
+latest reply cites. The workspace pane lists it. On a screen 120 columns
+or wider it stands to the right of the chat. On a narrower one, Ctrl-X
+opens it over the chat and the status line shows `ctrl+x workspace (3)`
+with the item count.
+
+Newest items come first. A shown item has a title, its labels and its
+sources. A proposal is a call held for approval, with relay's preview of
+what it will do and its status: waiting, allowed, rejected or cancelled.
+Below the items, each reference in the latest reply, written `[[fact:12]]`
+or `[[doc:notes/venues.md]]`, shows the title relay gives it. A reference
+relay cannot find shows as `missing` in reverse video. A reference not yet
+checked, or checked against an agent that cannot answer, shows as
+`unchecked`. The pane never shows words from the model as a title: the
+model's text is only searched for references.
+
+Text from a contaminated item sits under an `untrusted` mark in reverse
+video, with its URLs defanged. A link to a domain that no approved or
+trusted item has shown so far in this run carries `[new domain]`.
+
+Keys, once Ctrl-X has given the pane focus:
+
+- Up and down, or k and j, select an item. Enter opens it; up and down,
+  Page Up and Page Down scroll.
+- t starts a trust of the selected item.
+- Esc goes back from an item, then returns to the input. Ctrl-X does the
+  same from anywhere.
+
+While the pane has focus no key reaches the input box. Ctrl-C still stops
+a running turn. A permission request takes the keys back from the pane,
+and you answer it as before: the pane only highlights the waiting
+proposal and shows its preview, here and in the request box. It adds no
+second way to approve.
+
+Trusting needs relay chat, which lets acp-tui ask relay to do it. Press t
+on a contaminated shown item. The pane shows the text that would be
+trusted, with its path, version and hash, and says "Trust this? It clears
+contaminated from what it says now." After a short delay, y confirms;
+any other key cancels. acp-tui then sends relay the version and hash it
+listed, so a document that changed in between is refused. Where relay does
+not take trust from this client, the pane shows the `relay trust` command
+to run in a terminal and does nothing else. Against an agent without relay
+the pane lists the displays and requests acp-tui saw itself, and offers no
+trust.
+
 ## Pasting marks the conversation untrusted
 
 A pasted email or web page is text an outsider may have written, and
@@ -108,6 +156,11 @@ It reads no clock and does no IO, so property tests can check it over long
 random sessions. `internal/wire` turns ACP messages into those events, and
 `internal/render` turns the state into terminal lines. The renderer uses
 bold, italic and faint, and no colours.
+
+The pane follows the same split. `core` holds its state and the trust
+rules, `wire` reads relay's `_meta` and its `_relay/items`, `_relay/resolve`
+and `_relay/trust` answers, and `render` draws it. The `agent` package
+makes the three calls, one at a time and in order.
 
 `internal/agent` runs the agent process, and `internal/ui` is the Bubble
 Tea program. Both are thin code around the core that carries out its

@@ -149,10 +149,11 @@ func newDomainsLine(s core.State, defang bool, width int, texts ...string) []str
 	return hang("  ", styled(bold, "new domain: ")+strings.Join(hosts, ", "), width)
 }
 
-// newDomainTag marks a link whose host is new.
+// newDomainTag marks a link whose host is new. It goes in front of the
+// link, where a line break cannot split it.
 func newDomainTag(s core.State, texts ...string) string {
 	if len(s.Pane.NewHosts(texts...)) > 0 {
-		return " " + styled(bold, "[new domain]")
+		return styled(bold, "[new domain]") + " "
 	}
 	return ""
 }
@@ -292,7 +293,7 @@ func sourceLines(s core.State, src core.Source, def bool, width int) []string {
 	if text == "" {
 		text = "(untitled)"
 	}
-	text += styled(faint, " · ") + paneLine(src.Ref, def) + newDomainTag(s, src.Ref)
+	text = newDomainTag(s, src.Ref) + text + styled(faint, " · ") + paneLine(src.Ref, def)
 	return hang("  ↳ ", text, width)
 }
 
@@ -314,7 +315,7 @@ func citationBlock(s core.State, ref string, width int) []string {
 	case core.CiteExternal:
 		text = name
 		if c.Target != "" {
-			text += styled(faint, " → ") + paneLine(c.Target, def) + newDomainTag(s, c.Target, ref)
+			text = newDomainTag(s, c.Target, ref) + text + styled(faint, " → ") + paneLine(c.Target, def)
 		}
 	default:
 		text = styled(faint, "unchecked ") + name
@@ -328,9 +329,9 @@ func citationBlock(s core.State, ref string, width int) []string {
 func commandLines(cmd string, width int) []string {
 	var out []string
 	shown := core.EscapeNonPrinting(cmd)
-	unusual := shown != cmd || strings.Contains(cmd, "\n")
+	unusual := shown != cmd || strings.Contains(cmd, "\n") || live(cmd)
 	if unusual {
-		shown = core.EscapeLabel(cmd)
+		shown = Defang(core.EscapeLabel(cmd))
 	}
 	for _, l := range hardwrap(shown, max(width-2, 1)) {
 		out = append(out, "  "+styled(bold, l))
@@ -411,9 +412,9 @@ func paneParts(s core.State, now time.Time, width int) parts {
 		}
 	}
 	if p.Message != "" {
-		pr.foot = append(wrap(styled(bold, p.Message), width), pr.foot...)
+		pr.foot = append(wrap(styled(bold, paneLine(p.Message, false)), width), pr.foot...)
 		if p.Failure != "" {
-			pr.foot = append(hang("  ", paneLine(p.Failure, false), width), pr.foot...)
+			pr.foot = append(hang("  ", paneLine(p.Failure, true), width), pr.foot...)
 		}
 		if p.Command != "" {
 			pr.foot = append(commandLines(p.Command, width), pr.foot...)
@@ -472,11 +473,11 @@ func detailBody(s core.State, it core.Item, width int) []string {
 		var ids []string
 		for _, id := range []string{it.Ref, it.Path} {
 			if id != "" {
-				ids = append(ids, paneLine(id, false))
+				ids = append(ids, paneLine(id, def))
 			}
 		}
 		if it.Version != "" {
-			ids = append(ids, "v"+paneLine(it.Version, false))
+			ids = append(ids, "v"+paneLine(it.Version, def))
 		}
 		if len(ids) > 0 {
 			out = append(out, hang("  ", styled(faint, strings.Join(ids, " · ")), width)...)
@@ -512,10 +513,10 @@ func trustBody(s core.State, width int) []string {
 	out = append(out, "", untrustedMark()+" "+itemTitle(it, true))
 	var ids []string
 	for _, id := range []string{it.Path, "v" + it.Version} {
-		ids = append(ids, paneLine(id, false))
+		ids = append(ids, paneLine(id, true))
 	}
 	if len(it.SHA256) >= 12 {
-		ids = append(ids, "sha256 "+paneLine(it.SHA256[:12], false))
+		ids = append(ids, "sha256 "+paneLine(it.SHA256[:12], true))
 	}
 	out = append(out, hang("", styled(faint, strings.Join(ids, " · ")), width)...)
 	out = append(out, "")

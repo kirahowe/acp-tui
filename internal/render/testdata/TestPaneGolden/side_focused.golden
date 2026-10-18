@@ -1,0 +1,23 @@
+                                                                                    ␛[m ␛[0;2m│␛[m ␛[0;1mworkspace␛[m␛[0;2m (3)␛[m                        ␛[0;1mctrl+x␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m   ␛[0;1;7m untrusted ␛[m send_campaign␛[0;2m · ␛[mwaiting
+                                                                                    ␛[m ␛[0;2m│␛[m ␛[0;2m  proposal · private · contaminated␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m ␛[0;2m    Sends **Venue list** to Kira only.␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m ␛[0;2m    See␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m ␛[0;2m    hxxps://send[.]example[.]net/campaign␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m 
+                                                                                    ␛[m ␛[0;2m│␛[m ▸ ␛[0;1;7m untrusted ␛[m ␛[0;1mConcert venues near the hall␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m ␛[0;2m  shown · private · contaminated␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m ␛[0;2m  Three venues are open late.␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m   ↳ Venue list␛[0;2m ·␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m     ␛[0;2m␛[mweb:hxxps://example[.]org/venues
+                                                                                    ␛[m ␛[0;2m│␛[m   ↳ ␛[0;1m[new domain]␛[m Hall site␛[0;2m ·␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m     ␛[0;2m␛[mweb:hxxps://hall[.]example[.]com/about
+                                                                                    ␛[m ␛[0;2m│␛[m 
+                                                                                    ␛[m ␛[0;2m│␛[m   Hall address
+The hall seats 900 [[fact:12]], see [[doc:gone]], [[web:https://x.test/a]] and      ␛[m ␛[0;2m│␛[m ␛[0;2m  shown · private · trusted␛[m
+[[note:later]].                                                                     ␛[m ␛[0;2m│␛[m ␛[0;2m  1 Main Street␛[m
+                                                                                    ␛[m ␛[0;2m│␛[m 
+␛[0;2m╭──────────────────────────────────────────────────────────────────────────────────╮␛[m␛[m ␛[0;2m│␛[m ␛[0;2mcited in the latest reply (4)␛[m
+␛[0;2m│␛[m › ␛[0;2m                                                                              ␛[m ␛[0;2m│␛[m␛[m ␛[0;2m│␛[m   Fact 12 [venues]␛[0;2m · [[fact:12]]␛[m
+␛[0;2m╰──────────────────────────────────────────────────────────────────────────────────╯␛[m␛[m ␛[0;2m│␛[m ␛[0;2m↓ 4 below␛[m
+␛[0;2m  ␛[0;1m[private]␛[0;2m ␛[0;1;7m contaminated ␛[0;2m ready · ctrl+j for a new line␛[m                            ␛[m ␛[0;2m│␛[m ␛[0;2m↑↓ select · enter open · t trust · esc back␛[m

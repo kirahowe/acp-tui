@@ -1,0 +1,24 @@
+␛[0;1mworkspace␛[m␛[0;2m (3)␛[m                         ␛[0;1mctrl+x␛[m
+␛[0;1msend_campaign␛[m
+  ␛[0;1;7m untrusted ␛[m␛[0;2m outside text: links are␛[m
+  ␛[0;2mdefanged␛[m
+␛[0;2m  private · contaminated␛[m
+␛[0;2m  proposal · ␛[mwaiting
+
+␛[0;2mpreview␛[m
+  Sends **Venue list** to Kira only.
+  See hxxps://send[.]example[.]net/campaign
+
+␛[0;2minput␛[m
+  {
+      "group": "Kira only"
+  }
+  ␛[0;1mnew domain: ␛[msend[.]example[.]net
+
+
+
+
+
+
+
+␛[0;2m↑↓ scroll · t trust · esc back␛[m

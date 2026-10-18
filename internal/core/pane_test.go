@@ -432,3 +432,24 @@ func TestStatusCountsPaneItems(t *testing.T) {
 		t.Errorf("PaneItems %d", got)
 	}
 }
+
+// Without relay's list the pane shows what it saw, newest first, however
+// many displays arrive.
+func TestLocalItemsNewestFirst(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		s := busyState()
+		n := rapid.IntRange(0, 12).Draw(t, "n")
+		for i := range n {
+			s, _ = Reduce(s, displayEvent(fmt.Sprintf("c%d", i), fmt.Sprintf("title %d", i), Labels{}))
+		}
+		items := PaneItems(s)
+		if len(items) != n {
+			t.Fatalf("%d items, want %d", len(items), n)
+		}
+		for i, it := range items {
+			if want := fmt.Sprintf("title %d", n-1-i); it.Title != want {
+				t.Fatalf("item %d is %q, want %q", i, it.Title, want)
+			}
+		}
+	})
+}

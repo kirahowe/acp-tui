@@ -149,3 +149,30 @@ func TestAskNeverTouchesTheInput(t *testing.T) {
 		}
 	})
 }
+
+// While the workspace pane has focus, no key reaches the input box.
+func TestPaneFocusSwallowsKeys(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		var model any = New(nopConn{}, "")
+		step := func(msg tea.Msg) { model, _ = model.(Model).Update(msg) }
+		step(tea.WindowSizeMsg{Width: 100, Height: 30})
+		step(EventMsg{Event: core.Connected{At: time.Now()}})
+		step(EventMsg{Event: core.ItemsLoaded{At: time.Now(), Items: []core.Item{{Kind: core.ShownItem, Ref: "shown:x", Title: "x"}}}})
+		step(tea.KeyPressMsg{Code: 'a', Text: "a"}) // something already typed
+		step(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
+		if !model.(Model).core.Pane.Focus {
+			t.Fatal("ctrl+x did not focus the pane")
+		}
+		for range rapid.IntRange(1, 30).Draw(t, "keys") {
+			m := model.(Model)
+			if !m.core.Pane.Focus || m.core.Phase == core.Exited {
+				return
+			}
+			before := m.input.Value()
+			step(genKey(t))
+			if model.(Model).input.Value() != before {
+				t.Fatalf("input changed from %q to %q with the pane focused", before, model.(Model).input.Value())
+			}
+		}
+	})
+}

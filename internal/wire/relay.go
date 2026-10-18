@@ -134,7 +134,7 @@ type rawItem struct {
 	Text         string          `json:"text"`
 	Sources      []rawSource     `json:"sources"`
 	Labels       []string        `json:"labels"`
-	Version      json.Number     `json:"version"`
+	Version      json.RawMessage `json:"version"`
 	SHA256       string          `json:"sha256"`
 	CanTrust     bool            `json:"canTrust"`
 	TrustCommand string          `json:"trustCommand"`
@@ -161,8 +161,11 @@ func Items(raw json.RawMessage, err error, at time.Time) core.ItemsLoaded {
 		out := core.Item{Ref: it.Ref, Path: it.Path, CallID: it.CallID, At: it.At, Title: it.Title, Text: it.Text,
 			Labels: labelNames(it.Labels), SHA256: it.SHA256, CanTrust: it.CanTrust, TrustCommand: it.TrustCommand,
 			Tool: it.Tool, Status: it.Status}
-		if _, err := it.Version.Int64(); err == nil {
-			out.Version = it.Version.String()
+		var n json.Number
+		if json.Unmarshal(it.Version, &n) == nil {
+			if _, err := n.Int64(); err == nil {
+				out.Version = n.String()
+			}
 		}
 		for _, src := range it.Sources {
 			out.Sources = append(out.Sources, core.Source{Title: src.Title, Ref: src.Ref})

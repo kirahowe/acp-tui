@@ -1,0 +1,19 @@
+
+
+
+
+
+
+␛[0;2m╭─␛[m permission needed ␛[0;2m────────────────────────────────────────────────␛[m␛[0;2m╮␛[m
+␛[0;2m│␛[m ␛[0;1msend_campaign␛[m␛[0;2m                                                     ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m Sends **Venue list** to Kira only.␛[0;2m                                ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m See hxxps://send[.]example[.]net/campaign␛[0;2m                         ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m   ␛[0;1mnew domain: ␛[msend[.]example[.]net␛[0;2m                                ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m{␛[m␛[0;2m                                                                 ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m    "group": "Kira only"␛[m␛[0;2m                                          ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m}␛[m␛[0;2m                                                                 ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m   Allow (y)␛[0;2m                                                       ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;1m▸ Reject (n)␛[m␛[0;2m                                                      ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m↑↓ enter choose · v see all · esc cancel␛[m␛[0;2m                          ␛[m ␛[0;2m│␛[m
+␛[0;2m╰────────────────────────────────────────────────────────────────────╯␛[m
+␛[0;2m? ␛[0;1;7m contaminated ␛[0;2m waiting for you · 2562047h47m␛[m
