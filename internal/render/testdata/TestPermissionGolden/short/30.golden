@@ -13,8 +13,8 @@
 ␛[0;2m│␛[m ␛[0;1mweb_fetch · web_fetch {"ur␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ␛[0;1ml":"https://x.test"}␛[m␛[0;2m      ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ␛[0;2m{␛[m␛[0;2m                         ␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m    "url": "https://x.test␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m  "␛[m␛[0;2m                       ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m    "url": "hxxps://x[.]te␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m  st"␛[m␛[0;2m                     ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ␛[0;2m}␛[m␛[0;2m                         ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m   Allow once (y)␛[0;2m          ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ␛[0;1m▸ Reject (n)␛[m␛[0;2m              ␛[m ␛[0;2m│␛[m

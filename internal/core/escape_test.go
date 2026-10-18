@@ -163,3 +163,20 @@ func TestAnswerNoteIsEscaped(t *testing.T) {
 		t.Fatalf("note %q", n.Text)
 	}
 }
+
+// Regression (Codex review): variation selectors and other code points
+// that draw as nothing pass unicode.IsPrint, so a run of them could carry
+// text the person never sees. They show escaped.
+func TestInvisibleCodePointsAreEscaped(t *testing.T) {
+	for _, r := range []rune{0xFE0F, 0xE0100, 0xE01EF, 0x180B, 0x034F, 0x115F, 0x3164, 0x2800, 0x1D159, 0xE0041} {
+		if got := EscapeLabel("a" + string(r) + "b"); got == "a"+string(r)+"b" {
+			t.Errorf("U+%04X shown as itself", r)
+		}
+		if got := EscapeNonPrinting(string(r)); !strings.HasPrefix(got, `\u`) {
+			t.Errorf("U+%04X not escaped: %q", r, got)
+		}
+	}
+	if EscapeLabel("café ünïcode") != "café ünïcode" {
+		t.Error("ordinary letters escaped")
+	}
+}

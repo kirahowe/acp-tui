@@ -106,7 +106,10 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 		budget = max(budget-show-1, 1)
 	}
 	body := min(permissionBody, budget)
-	in := wrapAll(core.FaithfulLines(p.Input), inner)
+	// The input shows exactly, escaped, except that once the session is
+	// contaminated its links defang: a click on one to look at it would
+	// send what it carries before anything is approved.
+	in := wrapAll(defangIf(p.Labels.Contaminated || s.Labels.Contaminated, core.FaithfulLines(p.Input)), inner)
 	if len(in) == 0 {
 		in = []string{"(no input)"}
 	}
@@ -120,6 +123,18 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 	lines = append(lines, opts...)
 	lines = append(lines, styled(faint, truncate(hint, inner)))
 	return box("permission needed", lines, width)
+}
+
+// defangIf is lines with their links defanged when def is set.
+func defangIf(def bool, lines []string) []string {
+	if !def {
+		return lines
+	}
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = Defang(l)
+	}
+	return out
 }
 
 // requestLines shows a request's whole input in the transcript, escaped
@@ -138,7 +153,7 @@ func requestLines(e core.Entry, width int) []string {
 			out = append(out, "      "+l)
 		}
 	}
-	for _, l := range wrapAll(core.FaithfulLines(e.Detail), max(width-6, 1)) {
+	for _, l := range wrapAll(defangIf(e.PreviewDefang, core.FaithfulLines(e.Detail)), max(width-6, 1)) {
 		out = append(out, styled(faint, "      "+l))
 	}
 	return out

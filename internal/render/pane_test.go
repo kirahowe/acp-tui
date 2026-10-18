@@ -376,3 +376,24 @@ func paneBodyTail(s core.State) []string {
 	l, _ := paneRender(s, t0, 30, 10)
 	return l
 }
+
+// Regression (Codex review): a payload hidden in variation selectors
+// shows escaped in an item's detail and in the trust confirmation, so
+// what is trusted is what the person can see.
+func TestHiddenPayloadShowsInDetailAndTrust(t *testing.T) {
+	hidden := "Venues" + string(rune(0xE0100)) + string(rune(0xE0101)) + string(rune(0xFE0F))
+	it := core.Item{Kind: core.ShownItem, Title: "t", Text: hidden, Path: "shown/2026-10-18/x.md", Version: "1",
+		SHA256: "ab", CanTrust: true, Labels: core.Labels{Contaminated: true}}
+	for _, trust := range []bool{false, true} {
+		s := paneState(true, it)
+		s.Pane.Relay = true
+		s.Pane.Detail = true
+		if trust {
+			s.Pane.Trust = &core.TrustPrompt{Item: it, Since: t0}
+		}
+		out := ansi.Strip(strings.Join(PaneLines(s, t0, 60, 60), "\n"))
+		if !strings.Contains(out, `Venues\udb40\udd00\udb40\udd01\ufe0f`) || strings.ContainsRune(out, 0xE0100) || strings.ContainsRune(out, 0xFE0F) {
+			t.Errorf("trust %v: hidden code points not escaped:\n%s", trust, out)
+		}
+	}
+}

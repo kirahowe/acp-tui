@@ -242,7 +242,8 @@ type Entry struct {
 	// so URLs in it show defanged. See render.Defang.
 	Defang bool
 	// Preview is relay's description of a request, shown above its
-	// input, and PreviewDefang says its URLs show defanged.
+	// input, and PreviewDefang says its URLs, and the input's, show
+	// defanged.
 	Preview       string
 	PreviewDefang bool
 }

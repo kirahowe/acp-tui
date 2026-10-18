@@ -66,8 +66,10 @@ session.
 While the session is contaminated, URLs in what the agent writes (replies,
 notices, tool names, arguments and output) show defanged, as
 `hxxps://host[.]tld/path`, so a click cannot carry data out. acp-tui never
-writes OSC 8 hyperlinks. The request box shows its input exactly, URLs
-included. A paste while a request waits is dropped. acp-tui never sends
+writes OSC 8 hyperlinks. The request box shows its input exactly, but
+with its URLs defanged once the session is contaminated: a click on one,
+to look at it, would send what it carries before you approve anything.
+A paste while a request waits is dropped. acp-tui never sends
 `resource_link` blocks.
 
 ## The workspace pane
