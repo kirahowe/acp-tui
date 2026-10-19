@@ -156,7 +156,9 @@ bracketed paste types the text in as keys, and acp-tui cannot tell.
 To paste one block as trusted text, press Ctrl-Y first. The status line
 shows `[next paste: trusted]`, the next paste goes into the input as plain
 text, the transcript notes that it was not labelled, and the toggle
-resets. Ctrl-Y again disarms it.
+resets. Ctrl-Y again disarms it. A paste made while a permission request
+waits, the pane has focus or the transcript is open goes nowhere, and it
+uses up an armed trust: the next paste is untrusted again.
 
 If the agent does not advertise `promptCapabilities.embeddedContext`, a
 paste cannot be labelled. It goes in the prompt as plain text and the

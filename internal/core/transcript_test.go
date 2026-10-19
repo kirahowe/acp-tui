@@ -70,3 +70,35 @@ func TestTranscriptScrollStaysInRange(t *testing.T) {
 		}
 	})
 }
+
+// A paste that goes nowhere uses up an armed trust, so the next paste,
+// perhaps from somewhere else, goes in as untrusted.
+func TestDroppedPasteDisarmsTrust(t *testing.T) {
+	cases := map[string]func(State) State{
+		"transcript": func(s State) State { s, _ = Reduce(s, ShowTools{At: t0}); return s },
+		"pane":       func(s State) State { s.Pane.Focus = true; return s },
+		"request": func(s State) State {
+			s, _ = Reduce(s, Submit{At: t0, Text: "a"})
+			s, _ = Reduce(s, PermissionAsked{At: t0, Permission: Permission{ID: 1, Options: []PermOption{{ID: "allow", Kind: AllowOnce}}}})
+			return s
+		},
+	}
+	for name, away := range cases {
+		s, _ := run(Connected{At: t0, Embedded: true}, ToggleTrustedPaste{At: t0})
+		s = away(s)
+		s, fx := Reduce(s, Pasted{At: t0, Text: "meant to be trusted"})
+		if s.TrustNext || len(fx) != 0 {
+			t.Errorf("%s: trust %v, effects %+v", name, s.TrustNext, fx)
+		}
+	}
+}
+
+// Quitting leaves the view, so what it held back can still print.
+func TestQuitClosesTranscript(t *testing.T) {
+	for _, quit := range []Event{EOF{At: t0}, Interrupt{At: t0, InputEmpty: true}} {
+		s, _ := run(Connected{At: t0}, ShowThinking{At: t0}, quit)
+		if s.Transcript.Open {
+			t.Errorf("%T left the transcript open", quit)
+		}
+	}
+}

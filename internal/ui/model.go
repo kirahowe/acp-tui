@@ -62,10 +62,11 @@ type Model struct {
 	// pinned is set once a first print has moved the frame to the bottom
 	// row of the screen.
 	pinned bool
-	// quitting is set once the shell begins shutting down; Died says the
-	// agent exited before that.
-	quitting bool
-	died     bool
+	// quitting is set once the shell begins shutting down, and stopping
+	// once everything has printed and the program is told to stop; Died
+	// says the agent exited before that.
+	quitting, stopping bool
+	died               bool
 	// alt is set while the transcript view is on the alternate screen,
 	// and back until the inline frame is drawn again after it. Nothing
 	// is printed meanwhile: Bubble Tea would write the lines into the
@@ -126,10 +127,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			ev = m.wheel(msg, now)
 		}
 	case tea.PasteMsg:
-		if len(m.core.Asks) > 0 || m.core.Pane.Focus || m.core.Transcript.Open {
-			break // nothing pasted while a request waits or something else has the keys goes anywhere
-		}
-		ev = core.Pasted{At: now, Text: msg.Content}
+		ev = core.Pasted{At: now, Text: msg.Content} // the core drops it when the input is not in play
 	case EventMsg:
 		ev = msg.Event
 		if _, ok := ev.(core.AgentExited); ok && !m.quitting {
@@ -152,8 +150,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.effect(f, now))
 		}
 	}
-	cmds = append(cmds, m.screen(), m.print(now), m.tick(now))
+	cmds = append(cmds, m.screen(), m.print(now), m.tick(now), m.stop())
 	return m, tea.Batch(cmds...)
+}
+
+// stop ends the program once it is quitting and nothing is left to
+// print: lines the transcript view held back would be lost otherwise.
+func (m *Model) stop() tea.Cmd {
+	if !m.quitting || m.stopping || m.alt || m.back || m.printing {
+		return nil
+	}
+	m.stopping = true
+	conn := m.conn
+	return func() tea.Msg {
+		conn.Shutdown()
+		return tea.Quit()
+	}
 }
 
 // screen moves to the alternate screen once the transcript view is open
@@ -334,15 +346,7 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 		}
 		m.input.SetValue(text)
 	case core.Quit:
-		if m.quitting {
-			return nil
-		}
-		m.quitting = true
-		conn := m.conn
-		return func() tea.Msg {
-			conn.Shutdown()
-			return tea.Quit()
-		}
+		m.quitting = true // stop ends the program
 	}
 	return nil
 }

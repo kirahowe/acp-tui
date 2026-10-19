@@ -91,3 +91,42 @@ func TestNothingLostBehindTranscript(t *testing.T) {
 		return count(all, "Checking everything.") == 1 && count(all, "All thirty read.") == 1 && c < r && r < a && c >= 0
 	})
 }
+
+// The trust armed for a paste that went nowhere does not carry over to
+// the next paste. Codex's reproduction.
+func TestTrustNotCarriedPastTranscript(t *testing.T) {
+	h := startWith(t, "simple.jsonl", 80, 24, "", "-embedded")
+	h.waitIdle()
+	h.keys("\x19\x14") // ctrl+y, ctrl+t
+	h.waitScreen("the view", func(s string) bool { return strings.Contains(s, "transcript") })
+	h.keys(bracketed("meant to be trusted"))
+	h.keys("q")
+	h.waitIdle()
+	h.keys(bracketed("untrusted web page"))
+	h.waitScreen("the placeholder", func(s string) bool { return strings.Contains(s, "untrusted #1]") })
+	h.keys("\r")
+	h.waitAll("Hello there.")
+	if r := h.resources(); len(r) != 1 || !strings.Contains(r[0], "untrusted web page") {
+		t.Fatalf("resources %q", r)
+	}
+}
+
+// Ctrl-D in the view still leaves everything in scrollback.
+func TestQuitFromTranscriptKeepsScrollback(t *testing.T) {
+	h := start(t, "tool_burst.jsonl", 40, 10)
+	h.waitIdle()
+	h.keys("go\r\x14")
+	h.waitScreen("the end, in the view", func(s string) bool {
+		return strings.Contains(s, "All thirty read.") && strings.Contains(s, "transcript")
+	})
+	h.keys("\x04")
+	select {
+	case <-h.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not quit")
+	}
+	all := h.all()
+	if count(all, "Checking everything.") != 1 || count(all, "All thirty read.") != 1 || !strings.Contains(all, "› go") {
+		t.Fatalf("after quitting:\n%s", all)
+	}
+}

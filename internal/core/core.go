@@ -438,6 +438,7 @@ func (r *reducer) apply(e Event) {
 			// The shell clears the input box; there is nothing to stop.
 		default:
 			r.cancelAsks()
+			r.closeTranscript()
 			r.emit(Quit{})
 		}
 	case ShowTools:
@@ -450,6 +451,7 @@ func (r *reducer) apply(e Event) {
 		s.Help = !s.Help
 	case EOF:
 		r.cancelAsks()
+		r.closeTranscript() // what it held back from scrollback prints before the end
 		if s.Phase == Busy && !s.Turn.Cancelling {
 			s.Turn.Cancelling = true
 			r.emit(SendCancel{})
