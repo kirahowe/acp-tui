@@ -1,0 +1,16 @@
+␛[0;2m  ∴ thought␛[m
+
+␛[0;2m  ✓ read␛[m
+
+Fixed the off-by-one.
+␛[0;2m╭─␛[m transcript keys ␛[0;2m────────────────────────────────────────␛[m␛[0;2m╮␛[m
+␛[0;2m│␛[m ↑ ↓ k j            ␛[0;2mscroll␛[m␛[0;2m                               ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m pgup pgdown space  ␛[0;2mpage␛[m␛[0;2m                                 ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m home end g G       ␛[0;2mtop, bottom␛[m␛[0;2m                          ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ctrl+t t           ␛[0;2mshow or hide tool calls␛[m␛[0;2m              ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ctrl+o o           ␛[0;2mshow or hide thinking␛[m␛[0;2m                ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m esc q              ␛[0;2mback␛[m␛[0;2m                                 ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ?                  ␛[0;2mthese keys␛[m␛[0;2m                           ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2many key closes this␛[m␛[0;2m                                     ␛[m ␛[0;2m│␛[m
+␛[0;2m╰──────────────────────────────────────────────────────────╯␛[m
+␛[0;2m  transcript · esc back · ctrl+t show tools · ? keys␛[m

@@ -1,8 +1,8 @@
 ␛[0;2m⠋ starting␛[m
-␛[0;2m  ready · shift+enter for a new line␛[m
-␛[0;2m  ready · 2 queued · shift+enter for a new line␛[m
-␛[0;2m  ready · 12% context · shift+enter for a new line␛[m
-␛[0;2m  ready · 12% context · $1.23 · shift+enter for a new line␛[m
+␛[0;2m  ready · shift+enter for a new line · ? keys␛[m
+␛[0;2m  ready · 2 queued · shift+enter for a new line · ? keys␛[m
+␛[0;2m  ready · 12% context · shift+enter for a new line · ? keys␛[m
+␛[0;2m  ready · 12% context · $1.23 · shift+enter for a new line · ? keys␛[m
 ␛[0;2m⠋ writing · 3s · 0.50 EUR␛[m
 ␛[0;2m⠋ waiting · 2m10s · no output for 45s␛[m
 ␛[0;2m⠋ thinking · 14s␛[m
@@ -15,4 +15,4 @@
 ␛[0;2m⠋ waiting · 2m10s␛[m
 ␛[0;2m⠋ waiting · 2m10s · no output for 45s · 2 queued · 12% context␛[m
 ␛[0;2m⠋ waiting · 2m10s · no output for 45s␛[m
-␛[0;2m  ready · 12% context␛[m
+␛[0;2m  ready · 12% context · ? keys␛[m

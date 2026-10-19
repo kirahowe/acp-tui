@@ -176,7 +176,7 @@ func TestWorkspaceOverlayOnANarrowScreen(t *testing.T) {
 }
 
 // A display is for the operator: it is not in the tool output that
-// ctrl+o prints, and not in the transcript.
+// ctrl+t shows, and not in the transcript.
 func TestDisplayStaysOutOfToolOutput(t *testing.T) {
 	h := start(t, "workspace.jsonl", 80, 40)
 	h.keys("go\r")
@@ -185,8 +185,8 @@ func TestDisplayStaysOutOfToolOutput(t *testing.T) {
 	h.keys("y")
 	h.waitOutcome(`{"optionId":"allow","outcome":"selected"}`)
 	h.waitIdle()
-	h.keys("\x0f") // ctrl+o
-	all := h.waitAll("search result text")
+	h.keys("\x14") // ctrl+t
+	all := h.waitScreen("the output in full", func(s string) bool { return strings.Contains(s, "search result text") })
 	if strings.Contains(all, "Three venues are open late") {
 		t.Errorf("the display's text is in the transcript:\n%s", all)
 	}

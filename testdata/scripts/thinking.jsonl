@@ -1,0 +1,11 @@
+{"sessionUpdate":"agent_thought_chunk","messageId":"m1","content":{"type":"text","text":"The page has the memo. "}}
+{"sessionUpdate":"agent_thought_chunk","messageId":"m1","content":{"type":"text","text":"Fetch it first."}}
+{"sleep_ms":800}
+{"sessionUpdate":"agent_message_chunk","messageId":"m1","content":{"type":"text","text":"I will fetch it."}}
+{"sessionUpdate":"tool_call","toolCallId":"t1","name":"web_fetch","title":"web_fetch","kind":"fetch","status":"pending","rawInput":{"url":"https://example.com/page"}}
+{"request_permission":{"toolCallId":"t1","name":"web_fetch","title":"web_fetch","rawInput":{"url":"https://example.com/page"}}}
+{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"page text"}}]}
+{"sessionUpdate":"agent_message_chunk","messageId":"m2","content":{"type":"text","text":"Fetched."}}
+{"stopReason":"end_turn"}
+{"sessionUpdate":"agent_message_chunk","messageId":"m3","content":{"type":"text","text":"Second."}}
+{"stopReason":"end_turn"}

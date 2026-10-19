@@ -17,14 +17,17 @@ type Caps struct {
 type Action int
 
 const (
-	PassThrough Action = iota // to the input box
-	Send                      // submit the input (the core queues it when busy)
-	Newline                   // insert a newline into the input
-	Interrupt                 // Ctrl-C
-	EOF                       // Ctrl-D on an empty input
-	ShowTools                 // Ctrl-O: the latest tool calls in full
-	TrustPaste                // Ctrl-T: the next paste goes in as trusted text
-	TogglePane                // Ctrl-X: focus the workspace pane
+	PassThrough  Action = iota // to the input box
+	Send                       // submit the input (the core queues it when busy)
+	Newline                    // insert a newline into the input
+	Interrupt                  // Ctrl-C
+	EOF                        // Ctrl-D on an empty input
+	ShowTools                  // Ctrl-T: the transcript, with tool calls in full
+	ShowThinking               // Ctrl-O: the transcript, with thinking in full
+	TrustPaste                 // Ctrl-Y: the next paste goes in as trusted text
+	TogglePane                 // Ctrl-X: focus the workspace pane
+	Help                       // ? on an empty input, or Ctrl-/: the list of keys
+	Move                       // in the transcript: scroll, or leave
 )
 
 // Classify decides what a key press does. It is pure.
@@ -41,18 +44,72 @@ func Classify(k tea.KeyPressMsg, inputEmpty bool) Action {
 		return Newline
 	case "ctrl+c":
 		return Interrupt
-	case "ctrl+o":
-		return ShowTools
 	case "ctrl+t":
+		return ShowTools
+	case "ctrl+o":
+		return ShowThinking
+	case "ctrl+y":
 		return TrustPaste
 	case "ctrl+x":
 		return TogglePane
+	case "ctrl+/", "ctrl+_": // a terminal without the kitty protocol sends ctrl+/ as ctrl+_
+		return Help
+	case "?":
+		if inputEmpty {
+			return Help
+		}
 	case "ctrl+d":
 		if inputEmpty {
 			return EOF
 		}
 	}
 	return PassThrough
+}
+
+// ClassifyTranscript decides what a key press does in the transcript
+// view: Move, with the move, or one of ShowTools, ShowThinking, Help,
+// Interrupt and EOF. Every other key is swallowed (PassThrough), so
+// nothing typed reaches the input box. It is pure.
+func ClassifyTranscript(k tea.KeyPressMsg, inputEmpty bool) (Action, core.TranscriptAction) {
+	switch k.String() {
+	case "up", "k":
+		return Move, core.TranscriptUp
+	case "down", "j":
+		return Move, core.TranscriptDown
+	case "pgup", "b":
+		return Move, core.TranscriptPageUp
+	case "pgdown", "space", "f":
+		return Move, core.TranscriptPageDown
+	case "home", "g":
+		return Move, core.TranscriptTop
+	case "end", "G":
+		return Move, core.TranscriptBottom
+	case "esc", "q":
+		return Move, core.TranscriptClose
+	case "ctrl+t", "t":
+		return ShowTools, 0
+	case "ctrl+o", "o":
+		return ShowThinking, 0
+	case "?", "ctrl+/", "ctrl+_":
+		return Help, 0
+	case "ctrl+c":
+		return Interrupt, 0
+	case "ctrl+d":
+		if inputEmpty {
+			return EOF, 0
+		}
+	}
+	return PassThrough, 0
+}
+
+// closesHelp says a key only closes the list of keys; any other key
+// closes it and then does what it does.
+func closesHelp(k tea.KeyPressMsg) bool {
+	switch k.String() {
+	case "esc", "?", "ctrl+/", "ctrl+_":
+		return true
+	}
+	return false
 }
 
 // NewlineHint tells the user how to type a new line.

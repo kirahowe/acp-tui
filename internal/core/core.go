@@ -97,8 +97,6 @@ type (
 		InputEmpty bool
 	} // Ctrl-C
 	EOF struct{ At time.Time } // Ctrl-D on an empty input
-	// ShowTools asks to see the latest run of tool calls in full.
-	ShowTools struct{ At time.Time }
 )
 
 // Events from the shell.
@@ -127,7 +125,6 @@ func (e Usage) at() time.Time         { return e.At }
 func (e Submit) at() time.Time        { return e.At }
 func (e Interrupt) at() time.Time     { return e.At }
 func (e EOF) at() time.Time           { return e.At }
-func (e ShowTools) at() time.Time     { return e.At }
 func (e Tick) at() time.Time          { return e.At }
 func (e TerminalReady) at() time.Time { return e.At }
 func (e Printed) at() time.Time       { return e.At }
@@ -204,8 +201,9 @@ const (
 	// Banner is printed once, when the session starts: Title, and the
 	// agent's name, version and model in Text.
 	Banner
-	// Details is a run of tool calls shown in full, at the user's request.
-	Details
+	// Thought is the agent's thinking: one line inline, the text itself
+	// in the transcript view.
+	Thought
 	// Request is a permission request's whole input, shown at the user's
 	// request: Text names the call, Detail is its arguments.
 	Request
@@ -236,7 +234,7 @@ type Entry struct {
 	Text   string // user text, agent markdown, or note text
 	Title  string // the banner's title
 	Detail string // a notice's description
-	Calls  []Call // a Tool run's calls, or the calls Details shows
+	Calls  []Call // a Tool run's calls
 	Final  bool   // nothing will change it again
 	// Defang says the session was contaminated when the agent wrote this,
 	// so URLs in it show defanged. See render.Defang.
@@ -307,6 +305,10 @@ type State struct {
 	TrustNext bool
 	// Pane is the workspace pane.
 	Pane Pane
+	// Transcript is the full-screen view; Help says the list of keys
+	// shows.
+	Transcript Transcript
+	Help       bool
 }
 
 // Reduce applies one event. It never mutates s's slices in place, so a
@@ -366,7 +368,10 @@ func (r *reducer) apply(e Event) {
 		s.TrustNext = !s.TrustNext
 	case ItemsLoaded, CitationResolved, TrustDone, PaneKey:
 		r.pane(e)
-	case LabelsSeen, PermissionAsked, PermissionMove, PermissionConfirm, PermissionQuick, PermissionCancel, PermissionShowAll:
+	case PermissionAsked:
+		r.closeTranscript()
+		r.permission(e)
+	case LabelsSeen, PermissionMove, PermissionConfirm, PermissionQuick, PermissionCancel, PermissionShowAll:
 		r.permission(e)
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:
 		if s.Phase == Busy {
@@ -402,6 +407,7 @@ func (r *reducer) apply(e Event) {
 		if s.Phase != Exited {
 			r.cancelAsks()
 			r.closeAll()
+			r.closeTranscript()
 			s.Phase = Exited
 			s.Exit = e.Err
 			r.restoreQueue()
@@ -435,7 +441,13 @@ func (r *reducer) apply(e Event) {
 			r.emit(Quit{})
 		}
 	case ShowTools:
-		r.showTools()
+		r.show(&s.Transcript.Tools)
+	case ShowThinking:
+		r.show(&s.Transcript.Thinking)
+	case TranscriptKey:
+		r.transcriptKey(e)
+	case ToggleHelp:
+		s.Help = !s.Help
 	case EOF:
 		r.cancelAsks()
 		if s.Phase == Busy && !s.Turn.Cancelling {
@@ -464,6 +476,7 @@ func (r *reducer) agentEvent(e Event) {
 		r.citeLatest()
 	case ThoughtChunk:
 		s.Turn.Activity = Thinking
+		r.appendThought(e.MessageID, e.Text)
 	case ToolStarted:
 		s.Turn.Activity = Waiting
 		r.startCall(Call{ID: e.ID, Name: e.Name, Title: e.Title, Status: e.Status, Input: e.Input, Output: e.Output})
@@ -540,21 +553,6 @@ func (r *reducer) findCall(id string) (int, int) {
 	return -1, -1
 }
 
-// showTools adds the latest run of tool calls again, in full, when the
-// agent is idle and it is not the last thing shown already.
-func (r *reducer) showTools() {
-	es := r.s.Entries
-	if r.s.Phase != Idle || len(es) == 0 || es[len(es)-1].Kind == Details {
-		return
-	}
-	for i := len(es) - 1; i >= 0; i-- {
-		if es[i].Kind == Tool {
-			r.add(Entry{Kind: Details, Calls: append([]Call(nil), es[i].Calls...), Final: true, Defang: es[i].Defang})
-			return
-		}
-	}
-}
-
 // appendText adds a chunk to the open agent entry, or opens one, and then
 // moves every complete block of it into its own final entry.
 func (r *reducer) appendText(id, text string) {
@@ -584,7 +582,7 @@ func (r *reducer) add(e Entry) {
 	}
 	if n := len(r.s.Entries); n > 0 {
 		switch last := &r.s.Entries[n-1]; last.Kind {
-		case Agent:
+		case Agent, Thought:
 			last.Final = true
 		case Tool:
 			last.Final = allDone(last.Calls)

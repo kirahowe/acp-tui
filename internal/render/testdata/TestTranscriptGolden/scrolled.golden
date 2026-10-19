@@ -1,0 +1,16 @@
+␛[0;2m│␛[m agentloop␛[0;2m                                               ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2mctrl-c cancel · ctrl-d quit␛[m␛[0;2m                             ␛[m ␛[0;2m│␛[m
+␛[0;2m╰──────────────────────────────────────────────────────────╯␛[m
+
+␛[0;2m╭──────────────────────────────────────────────────────────╮␛[m
+␛[0;2m│␛[m ␛[0;2m›␛[m fix the parser␛[0;2m                                        ␛[m ␛[0;2m│␛[m
+␛[0;2m╰──────────────────────────────────────────────────────────╯␛[m
+
+␛[0;2m  ∴ ␛[m␛[0;2;3mThe lookahead reads one past the end on empty input.␛[m
+    ␛[0;2;3mCheck the tests first.␛[m
+
+  ✓ read
+␛[0;2m      path: parser.go␛[m
+␛[0;2m    ⎿ ␛[m␛[0;2mpackage parser␛[m
+      
+␛[0;2m  transcript · ↓ 3 more · esc back · ctrl+t hide tools␛[m

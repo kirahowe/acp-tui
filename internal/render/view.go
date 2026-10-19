@@ -41,14 +41,26 @@ type Frame struct {
 // on a wide screen the pane stands to the right of it, and on a narrow one,
 // while the pane has focus, the pane takes the transcript's place. The
 // lines that go to scrollback are the transcript's own either way.
+//
+// With s.Help the list of keys takes the transcript's place, unless a
+// permission request waits.
 func View(s core.State, input, hint string, now time.Time, width, height int) Frame {
+	help := func(w int) func(room int) []string {
+		if !s.Help || len(s.Asks) > 0 {
+			return nil
+		}
+		return func(room int) []string { return HelpLines(w, room) }
+	}
 	if Side(width) {
-		f := view(s, input, hint, now, MainWidth(width), height, nil, false)
+		f := view(s, input, hint, now, MainWidth(width), height, help(MainWidth(width)), false)
 		rows := max(height-1, 1)
 		pane, mx := paneRender(s, now, PaneWidth(width), rows)
 		f.Content = strings.Join(joinColumns(strings.Split(f.Content, "\n"), pane, MainWidth(width)), "\n")
 		f.DetailMax = mx
 		return f
+	}
+	if h := help(width); h != nil {
+		return view(s, input, hint, now, width, height, h, true)
 	}
 	if s.Pane.Focus {
 		mx := 0

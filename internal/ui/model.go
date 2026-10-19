@@ -35,6 +35,9 @@ type (
 	tickMsg    time.Time
 	readyMsg   struct{}
 	printedMsg struct{}
+	// backMsg says the inline frame is on screen again after the
+	// transcript view.
+	backMsg struct{}
 )
 
 // tickEvery is how often the status line redraws while the agent works.
@@ -63,6 +66,11 @@ type Model struct {
 	// agent exited before that.
 	quitting bool
 	died     bool
+	// alt is set while the transcript view is on the alternate screen,
+	// and back until the inline frame is drawn again after it. Nothing
+	// is printed meanwhile: Bubble Tea would write the lines into the
+	// alternate screen, and they would never reach scrollback.
+	alt, back bool
 }
 
 // New returns the model for a conversation with conn. title names the
@@ -113,9 +121,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		ev, cmd = m.key(msg, now)
 		cmds = append(cmds, cmd)
+	case tea.MouseWheelMsg:
+		if m.core.Transcript.Open {
+			ev = m.wheel(msg, now)
+		}
 	case tea.PasteMsg:
-		if len(m.core.Asks) > 0 || m.core.Pane.Focus {
-			break // nothing pasted while a request waits or the pane has the keys goes anywhere
+		if len(m.core.Asks) > 0 || m.core.Pane.Focus || m.core.Transcript.Open {
+			break // nothing pasted while a request waits or something else has the keys goes anywhere
 		}
 		ev = core.Pasted{At: now, Text: msg.Content}
 	case EventMsg:
@@ -130,6 +142,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ev = core.TerminalReady{At: now}
 	case printedMsg:
 		m.printing = false
+	case backMsg:
+		m.back = false
 	}
 	if ev != nil {
 		var fx []core.Effect
@@ -138,8 +152,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.effect(f, now))
 		}
 	}
-	cmds = append(cmds, m.print(now), m.tick(now))
+	cmds = append(cmds, m.screen(), m.print(now), m.tick(now))
 	return m, tea.Batch(cmds...)
+}
+
+// screen moves to the alternate screen once the transcript view is open
+// and no print is in flight, and back when it closes. Leaving, it waits
+// readyDelay for the inline frame to be drawn before anything prints.
+func (m *Model) screen() tea.Cmd {
+	switch open := m.core.Transcript.Open && len(m.core.Asks) == 0; {
+	case open && !m.alt && !m.printing:
+		m.alt = true
+	case !open && m.alt:
+		m.alt, m.back = false, true
+		return tea.Tick(readyDelay, func(time.Time) tea.Msg { return backMsg{} })
+	}
+	return nil
+}
+
+// wheel scrolls the transcript view three lines at a time.
+func (m *Model) wheel(w tea.MouseWheelMsg, now time.Time) core.Event {
+	a := core.TranscriptPageUp
+	switch w.Button {
+	case tea.MouseWheelUp:
+	case tea.MouseWheelDown:
+		a = core.TranscriptPageDown
+	default:
+		return nil
+	}
+	return core.TranscriptKey{At: now, Action: a, Max: m.transcriptFrame(now).Max, Page: 3}
 }
 
 // key turns a key press into an event, or passes it to the input box.
@@ -148,6 +189,15 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 		return askKey(ClassifyAsk(k), now), nil
 	}
 	empty := m.input.Value() == ""
+	if m.core.Help {
+		m.core, _ = core.Reduce(m.core, core.ToggleHelp{At: now})
+		if closesHelp(k) {
+			return nil, nil
+		}
+	}
+	if m.core.Transcript.Open {
+		return m.transcriptKey(k, empty, now), nil
+	}
 	if m.core.Pane.Focus {
 		return m.paneKey(k, empty, now), nil
 	}
@@ -171,6 +221,10 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 		return core.EOF{At: now}, nil
 	case ShowTools:
 		return core.ShowTools{At: now}, nil
+	case ShowThinking:
+		return core.ShowThinking{At: now}, nil
+	case Help:
+		return core.ToggleHelp{At: now}, nil
 	case TrustPaste:
 		return core.ToggleTrustedPaste{At: now}, nil
 	case TogglePane:
@@ -179,6 +233,32 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(k)
 	return nil, cmd
+}
+
+// transcriptKey is the event for a key pressed in the transcript view.
+// Ctrl-C stops a running turn and, otherwise, leaves the view; Ctrl-D
+// quits only from an empty input.
+func (m *Model) transcriptKey(k tea.KeyPressMsg, empty bool, now time.Time) core.Event {
+	a, move := ClassifyTranscript(k, empty)
+	switch a {
+	case Move:
+		tf := m.transcriptFrame(now)
+		return core.TranscriptKey{At: now, Action: move, Max: tf.Max, Page: tf.Page}
+	case ShowTools:
+		return core.ShowTools{At: now}
+	case ShowThinking:
+		return core.ShowThinking{At: now}
+	case Help:
+		return core.ToggleHelp{At: now}
+	case Interrupt:
+		if m.core.Phase == core.Busy {
+			return core.Interrupt{At: now, InputEmpty: true}
+		}
+		return core.TranscriptKey{At: now, Action: core.TranscriptClose}
+	case EOF:
+		return core.EOF{At: now}
+	}
+	return nil
 }
 
 // paneKey is the event for a key pressed while the workspace pane has
@@ -276,7 +356,7 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 // the top row and ends one row short of the bottom, and a print scrolls
 // it down there.
 func (m *Model) print(now time.Time) tea.Cmd {
-	if !m.core.Ready || m.printing {
+	if !m.core.Ready || m.printing || m.alt || m.back || m.core.Transcript.Open {
 		return nil
 	}
 	f := m.frame(now)
@@ -329,10 +409,20 @@ func (m Model) frame(now time.Time) render.Frame {
 	return render.View(m.core, m.input.View(), NewlineHint(m.caps), now, m.width(), max(m.h, 2))
 }
 
+func (m Model) transcriptFrame(now time.Time) render.TranscriptFrame {
+	return render.TranscriptView(m.core, now, m.width(), max(m.h, 2))
+}
+
 func (m Model) View() tea.View {
+	if m.alt {
+		v := tea.NewView(m.transcriptFrame(time.Now()).Content)
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
 	f := m.frame(time.Now())
 	v := tea.NewView(f.Content)
-	if c := m.input.Cursor(); c != nil && len(m.core.Asks) == 0 && !m.core.Pane.Focus {
+	if c := m.input.Cursor(); c != nil && len(m.core.Asks) == 0 && !m.core.Pane.Focus && !m.core.Help {
 		c.Position.X += f.InputX
 		c.Position.Y += f.InputY
 		v.Cursor = c

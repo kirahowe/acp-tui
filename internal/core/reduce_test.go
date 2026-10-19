@@ -174,10 +174,10 @@ func TestReduceTotal(t *testing.T) {
 				if s.Phase != Busy && !e.Final {
 					t.Fatalf("step %d: entry %d open while not busy: %+v", i, j, e)
 				}
-				if e.Kind == Agent && !e.Final && j != len(s.Entries)-1 {
-					t.Fatalf("step %d: open agent entry %d is not last", i, j)
+				if (e.Kind == Agent || e.Kind == Thought) && !e.Final && j != len(s.Entries)-1 {
+					t.Fatalf("step %d: open %v entry %d is not last", i, e.Kind, j)
 				}
-				if e.Kind != Tool && !e.Final && e.Kind != Agent {
+				if e.Kind != Tool && !e.Final && e.Kind != Agent && e.Kind != Thought {
 					t.Fatalf("step %d: entry %d of kind %v is open", i, j, e.Kind)
 				}
 				if e.Kind == Tool && e.Final && !allDone(e.Calls) {
@@ -494,30 +494,6 @@ func TestToolCallsGroupIntoRuns(t *testing.T) {
 	s, _ = Reduce(s, ToolUpdated{At: t0, ID: "c2", Status: &ok})
 	if !s.Entries[2].Final || s.Entries[4].Final {
 		t.Fatalf("after c2: %+v", s.Entries)
-	}
-}
-
-// ctrl+o shows the latest run in full once, and only when idle.
-func TestShowTools(t *testing.T) {
-	ok := OK
-	s, _ := run(Connected{At: t0}, Submit{At: t0, Text: "a"},
-		ToolStarted{At: t0, ID: "c1", Name: "read", Input: `{"path":"a"}`, Status: Running},
-		ShowTools{At: t0})
-	if n := len(s.Entries); n != 3 {
-		t.Fatalf("shown while busy: %+v", s.Entries)
-	}
-	s, _ = Reduce(s, ToolUpdated{At: t0, ID: "c1", Status: &ok})
-	s, _ = Reduce(s, PromptDone{At: t0, Stop: EndTurn})
-	if !Status(s, t0).ToolsHidden {
-		t.Fatal("no hint that tools can be shown")
-	}
-	s, _ = Reduce(s, ShowTools{At: t0})
-	s, _ = Reduce(s, ShowTools{At: t0})
-	if n := len(s.Entries); n != 4 || s.Entries[3].Kind != Details || s.Entries[3].Calls[0].Input != `{"path":"a"}` {
-		t.Fatalf("entries %+v", s.Entries)
-	}
-	if Status(s, t0).ToolsHidden {
-		t.Fatal("hint shown after the tools were shown")
 	}
 }
 

@@ -184,12 +184,16 @@ func TestWidthBound(t *testing.T) {
 			{Kind: core.Agent, Text: text, Final: true},
 			{Kind: core.Tool, Calls: []core.Call{{Title: text, Status: core.Running}, {Name: text, Status: core.OK}}},
 			{Kind: core.Tool, Calls: []core.Call{{Title: text, Output: text, Status: core.Failed}}, Final: true},
-			{Kind: core.Details, Calls: []core.Call{{Name: text, Input: text, Output: text, Status: core.Failed},
+			{Kind: core.Tool, Calls: []core.Call{{Name: text, Input: text, Output: text, Status: core.Failed},
 				{Name: "x", Input: `{"a":` + strconvQuote(text) + `,"b":[1,2]}`, Output: text, Status: core.OK}}, Final: true},
 			{Kind: core.Note, Text: text, Detail: text, Final: true},
 			{Kind: core.Banner, Title: text, Text: text, Final: true},
+			{Kind: core.Thought, Text: text, Final: true},
+			{Kind: core.Thought, Text: text},
 		}
 		checkWidth(t, "entries", Entries(nil, es, width, now), width)
+		checkWidth(t, "entries in full", entriesAs(nil, es, expand{tools: true, thinking: true}, width, now), width)
+		checkWidth(t, "keys", HelpLines(width, 40), width)
 		l := core.StatusLine{
 			Kind: core.StatusKind(rapid.IntRange(int(core.StatusStarting), int(core.StatusExited)).Draw(t, "kind")),
 			Tool: text, Tools: rapid.IntRange(0, 3).Draw(t, "tools"), Reason: text,
@@ -212,6 +216,14 @@ func TestWidthBound(t *testing.T) {
 		checkWidth(t, "view", view, width)
 		if len(view) != max(height-1, 1) {
 			t.Fatalf("view has %d rows for height %d", len(view), height)
+		}
+		s.Transcript = core.Transcript{Open: true, Tools: rapid.Bool().Draw(t, "tools"), Thinking: rapid.Bool().Draw(t, "thinking"), Scroll: rapid.IntRange(0, 100).Draw(t, "scroll")}
+		s.Help = rapid.Bool().Draw(t, "help")
+		tf := TranscriptView(s, now, width, height)
+		tv := strings.Split(tf.Content, "\n")
+		checkWidth(t, "transcript", tv, width)
+		if len(tv) != max(height, 2) || tf.Max < 0 || tf.Page < 1 {
+			t.Fatalf("transcript has %d rows for height %d, max %d, page %d", len(tv), height, tf.Max, tf.Page)
 		}
 		checkWidth(t, "print", f.Print, width)
 		if f.InputY < 0 || f.InputY >= len(view) || f.InputX < 0 || f.InputX >= width {

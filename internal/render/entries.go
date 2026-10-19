@@ -15,9 +15,17 @@ import (
 // already shown, or nil at the start; it decides the spacing above the
 // first one. now picks the spinner frame for a running tool.
 func Entries(prev *core.Entry, es []core.Entry, width int, now time.Time) []string {
+	return entriesAs(prev, es, expand{}, width, now)
+}
+
+// expand says which kinds of block show in full, as in the transcript
+// view.
+type expand struct{ tools, thinking bool }
+
+func entriesAs(prev *core.Entry, es []core.Entry, x expand, width int, now time.Time) []string {
 	var out []string
 	for i := range es {
-		lines := entry(es[i], width, now)
+		lines := entryAs(es[i], x, width, now)
 		if len(lines) == 0 {
 			continue
 		}
@@ -38,9 +46,13 @@ func blankBetween(prev, e core.Entry) bool {
 }
 
 func entry(e core.Entry, width int, now time.Time) []string {
+	return entryAs(e, expand{}, width, now)
+}
+
+func entryAs(e core.Entry, x expand, width int, now time.Time) []string {
 	if e.Defang {
 		e.Defang = false
-		return defangLines(entry(defanged(e), width, now))
+		return defangLines(entryAs(defanged(e), x, width, now))
 	}
 	switch e.Kind {
 	case core.User:
@@ -48,9 +60,12 @@ func entry(e core.Entry, width int, now time.Time) []string {
 	case core.Agent:
 		return Markdown(e.Text, width)
 	case core.Tool:
+		if x.tools {
+			return detailLines(e.Calls, width, now)
+		}
 		return []string{runLine(e.Calls, width, now)}
-	case core.Details:
-		return detailLines(e.Calls, width, now)
+	case core.Thought:
+		return thoughtLines(e, x.thinking, width)
 	case core.Banner:
 		return bannerLines(e, width)
 	case core.Request:
@@ -72,6 +87,23 @@ func userLines(text string, width int) []string {
 		out = append(out, wrap(line, inner-2)...)
 	}
 	return box("", indent(out, styled(faint, "›")+" ", "  ", inner), width)
+}
+
+// thoughtLines is the agent's thinking: in full, faint and in italics,
+// or one faint line that says it is there.
+func thoughtLines(e core.Entry, full bool, width int) []string {
+	if !full {
+		word := "thought"
+		if !e.Final {
+			word = "thinking"
+		}
+		return []string{styled(faint, truncate("  ∴ "+word, width))}
+	}
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(sanitize(e.Text)), "\n") {
+		out = append(out, wrap(styled(faint|italic, line), max(width-4, 1))...)
+	}
+	return indent(out, styled(faint, "  ∴ "), "    ", width)
 }
 
 // runLine is a run of tool calls on one line: a glyph for the run, then
@@ -145,7 +177,7 @@ func label(c core.Call) string {
 	return "tool"
 }
 
-// detailOutput is how many lines of a call's output Details shows.
+// detailOutput is how many lines of a call's output show in full.
 const detailOutput = 8
 
 // detailLines shows each call of a run in full: a glyph and the tool's

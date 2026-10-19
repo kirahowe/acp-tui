@@ -117,9 +117,12 @@ func TestToolLinesGolden(t *testing.T) {
 		run(call(core.OK, "roles", "", ""), failed, ok, ok, ok, call(core.OK, "role_add", "{}", ""), call(core.OK, "role_add", "{}", ""), call(core.OK, "journal_write", "", "")),
 		run(call(core.OK, "", "", ""), core.Call{Title: "検索 東京の天気を調べて、明日の予報を教えてください。それから大阪も", Status: core.OK}),
 		run(core.Call{Title: "multi\nline\x1b[31m title", Status: core.OK}),
-		{Kind: core.Details, Calls: []core.Call{call(core.OK, "roles", "", ""), failed, ok, call(core.Stopped, "echo", "not json", "")}},
 	}
-	requireGolden(t, strings.Join(Entries(nil, es, 60, t0), "\n"))
+	out := Entries(nil, es, 60, t0)
+	// The same kind of run in full, as the transcript view shows it.
+	full := run(call(core.OK, "roles", "", ""), failed, ok, call(core.Stopped, "echo", "not json", ""))
+	out = append(append(out, ""), entriesAs(nil, []core.Entry{full}, expand{tools: true}, 60, t0)...)
+	requireGolden(t, strings.Join(out, "\n"))
 }
 
 func TestViewGolden(t *testing.T) {
@@ -243,3 +246,43 @@ func TestBadgesGolden(t *testing.T) {
 	out = append(out, StatusText(core.StatusLine{Kind: core.StatusAsking, Asks: 2, Labels: core.Labels{Private: true}}, "", t0, 60))
 	requireGolden(t, strings.Join(out, "\n"))
 }
+
+// The transcript view of one turn: collapsed, with each kind in full,
+// scrolled, and with the list of keys over it.
+func TestTranscriptGolden(t *testing.T) {
+	ok := core.OK
+	s, _ := core.Reduce(core.State{}, core.Connected{At: t0, Agent: "agentloop"})
+	for _, e := range []core.Event{
+		core.Submit{At: t0, Text: "fix the parser"},
+		core.ThoughtChunk{At: t0, MessageID: "m1", Text: "The lookahead reads one past the end on empty input.\nCheck the tests first."},
+		core.ToolStarted{At: t0, ID: "c1", Name: "read", Input: `{"path":"parser.go"}`, Status: core.Running},
+		core.ToolUpdated{At: t0, ID: "c1", Status: &ok, Output: ptr("package parser\n\nfunc Next() {}")},
+		core.TextChunk{At: t0, MessageID: "m1", Text: "Fixed the off-by-one."},
+		core.PromptDone{At: t0, Stop: core.EndTurn},
+	} {
+		s, _ = core.Reduce(s, e)
+	}
+	cases := []struct {
+		name string
+		tr   core.Transcript
+		help bool
+	}{
+		{"collapsed", core.Transcript{Open: true}, false},
+		{"tools", core.Transcript{Open: true, Tools: true}, false},
+		{"thinking", core.Transcript{Open: true, Thinking: true}, false},
+		{"scrolled", core.Transcript{Open: true, Tools: true, Thinking: true, Scroll: 3}, false},
+		{"help", core.Transcript{Open: true}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s.Transcript, s.Help = c.tr, c.help
+			requireGolden(t, TranscriptView(s, t0, 60, 16).Content)
+		})
+	}
+	t.Run("inline_help", func(t *testing.T) {
+		s.Transcript, s.Help = core.Transcript{}, true
+		requireGolden(t, View(s, "› ", "ctrl+j for a new line", t0, 60, 18).Content)
+	})
+}
+
+func ptr[T any](v T) *T { return &v }

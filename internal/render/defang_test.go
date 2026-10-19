@@ -51,12 +51,14 @@ func TestDefangedEntries(t *testing.T) {
 			{Kind: core.Agent, Text: text, Final: true},
 			{Kind: core.Note, Text: text, Detail: text, Final: true},
 			{Kind: core.Tool, Calls: []core.Call{{Name: "web_fetch", Title: text, Input: `{"url":"` + text + `"}`, Status: core.OK}}, Final: true},
-			{Kind: core.Details, Calls: []core.Call{{Name: "web_fetch", Title: text, Input: `{"url":"` + text + `"}`, Output: text, Status: core.OK}}, Final: true},
+			{Kind: core.Tool, Calls: []core.Call{{Name: "web_fetch", Title: text, Input: `{"url":"` + text + `"}`, Output: text, Status: core.OK}}, Final: true},
+			{Kind: core.Thought, Text: text, Final: true},
 		} {
 			width := rapid.IntRange(1, 90).Draw(t, "width")
+			x := expand{tools: rapid.Bool().Draw(t, "tools"), thinking: rapid.Bool().Draw(t, "thinking")}
 			for _, defang := range []bool{true, false} {
 				e.Defang = defang
-				out := strings.Join(Entries(nil, []core.Entry{e}, width, t0), "\n")
+				out := strings.Join(entriesAs(nil, []core.Entry{e}, x, width, t0), "\n")
 				if strings.Contains(out, "\x1b]") || strings.ContainsRune(sgrRE.ReplaceAllString(out, ""), 0x1b) || strings.ContainsRune(out, 0x07) {
 					t.Fatalf("kind %v: an escape other than SGR in %q", e.Kind, out)
 				}

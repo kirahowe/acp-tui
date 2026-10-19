@@ -60,7 +60,7 @@ func TestAgentloopFixtures(t *testing.T) {
 			ID: "call_1", Name: "echo", Title: `echo {"text":"hi"}`, Status: st, Input: `{"text":"hi"}`, Output: output}}}
 	}
 	cases := map[string][]core.Entry{
-		"simple_reply":       {banner, user, agent("a3", "Hello there.")},
+		"simple_reply":       {banner, user, {Kind: core.Thought, ID: "a3", Text: "The user said hi.", Final: true}, agent("a3", "Hello there.")},
 		"tool_loop":          {banner, user, agent("a3", "Let me echo that."), echo(core.OK, "echo: hi"), agent("a7", "It said hi.")},
 		"retry_then_success": {banner, user, agent("a4", "Sorry for the wait.")},
 		"model_error": {banner, user,

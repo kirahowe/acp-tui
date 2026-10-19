@@ -24,16 +24,29 @@ with a status line under it showing what the agent is doing, for how long,
 and how much of its context window is in use and what the session has
 cost when the agent reports those. A message you send stays in its box,
 so your turns stand apart from the agent's. Tool calls made one after
-another share one line that names the tools.
+another share one line that names the tools, and the agent's thinking
+shows as one faint line, `∴ thought`.
 
 Enter sends. Ctrl-J starts a new line in any terminal; Shift-Enter,
 Ctrl-Enter and Alt-Enter do too where the terminal reports them. Pressing
 Enter while the agent is working queues the text, and everything queued
 goes out as one message when the turn ends. Ctrl-C cancels the turn and
 puts any queued text back in the input. With nothing running and an empty
-input, Ctrl-C or Ctrl-D quits. Ctrl-O, once the turn is over, prints the
-latest run of tool calls in full: each call's arguments and the start of
-its output.
+input, Ctrl-C or Ctrl-D quits. `?` on an empty input, or Ctrl-/, lists
+the keys; any key closes the list.
+
+Ctrl-T and Ctrl-O open the transcript: the whole session on the
+terminal's alternate screen, with tool calls (Ctrl-T) or thinking
+(Ctrl-O) in full. A call in full shows its arguments and the first lines
+of its output. In the transcript, Ctrl-T or `t` shows or hides tool calls
+and Ctrl-O or `o` thinking. Up and down, `j` and `k`, the page keys, `g`
+and `G`, and the mouse wheel scroll it, and Esc or `q` goes back. It
+works while the agent is busy too. The chat prints into the terminal's
+own scrollback, which cannot be redrawn, so the transcript is where
+blocks open and close. Nothing goes into scrollback while it is open:
+what the agent writes meanwhile is printed when you leave. A permission
+request closes the transcript, so the request is always on screen, and
+the session's labels lead its footer as they lead the status line.
 
 The agent's stderr would garble the screen, so acp-tui keeps the last
 64 KiB and prints them if the agent exits on its own. `--agent-log FILE`
@@ -140,10 +153,10 @@ makes egress need your approval from then on. Delete a placeholder from
 the input and that paste is not sent. A terminal that does not do
 bracketed paste types the text in as keys, and acp-tui cannot tell.
 
-To paste one block as trusted text, press Ctrl-T first. The status line
+To paste one block as trusted text, press Ctrl-Y first. The status line
 shows `[next paste: trusted]`, the next paste goes into the input as plain
 text, the transcript notes that it was not labelled, and the toggle
-resets. Ctrl-T again disarms it.
+resets. Ctrl-Y again disarms it.
 
 If the agent does not advertise `promptCapabilities.embeddedContext`, a
 paste cannot be labelled. It goes in the prompt as plain text and the

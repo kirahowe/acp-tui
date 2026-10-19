@@ -76,11 +76,9 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 	if l.Spend != nil {
 		add(Money(*l.Spend))
 	}
-	if l.ToolsHidden {
-		add("ctrl+o tool details")
-	}
 	if l.Kind == core.StatusIdle {
 		add(hint)
+		add("? keys")
 	}
 	// The first part always shows, cut if it must be. Each later part
 	// shows only if it fits whole, so a narrow terminal loses the least

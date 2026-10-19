@@ -38,13 +38,10 @@ type StatusLine struct {
 	// HasContext: the agent has reported a window size.
 	Context    int
 	HasContext bool
-	Spend      *Cost // what the session has cost, once the agent says
-	// ToolsHidden says ShowTools would show something: the agent is idle
-	// and the latest run of tool calls is not shown in full.
-	ToolsHidden bool
-	Labels      Labels // what the session has seen
-	TrustNext   bool   // the next paste goes in as trusted text
-	Asks        int    // permission requests waiting, including the one on offer
+	Spend      *Cost  // what the session has cost, once the agent says
+	Labels     Labels // what the session has seen
+	TrustNext  bool   // the next paste goes in as trusted text
+	Asks       int    // permission requests waiting, including the one on offer
 	// PaneItems is how many items the workspace pane lists. PaneHint says
 	// the pane is a toggled overlay, so the status line names its key.
 	PaneItems int
@@ -67,12 +64,6 @@ func Status(s State, now time.Time) StatusLine {
 		return l
 	case Idle:
 		l.Kind = StatusIdle
-		for i := len(s.Entries) - 1; i >= 0 && s.Entries[i].Kind != Details; i-- {
-			if s.Entries[i].Kind == Tool {
-				l.ToolsHidden = true
-				break
-			}
-		}
 		return l
 	case Exited:
 		l.Kind = StatusExited

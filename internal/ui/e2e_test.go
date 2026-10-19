@@ -305,17 +305,20 @@ func testToolBurstDoesNotRedraw(t *testing.T, cols, rows int) {
 	if n := count(h.all(), "✓ read file1.go · read file2.go"); n != 1 {
 		t.Fatalf("the run shows %d times:\n%s", n, h.all())
 	}
-	// ctrl+o shows every call, once. The lines reach scrollback one
-	// print at a time, so wait for the last to land.
-	h.keys("\x0f")
-	h.wait("each call once in the details", h.all, func(all string) bool {
-		for i := 1; i <= 30; i++ {
-			if count(all, fmt.Sprintf("✓ read file%d.go\n", i)) != 1 {
-				return false
-			}
-		}
-		return true
+	// ctrl+t shows the calls in full in the transcript view, and
+	// leaving it adds nothing to scrollback.
+	scroll := strings.Join(h.emu.scrollback(), "\n")
+	h.keys("\x14")
+	h.waitScreen("the last call in full", func(s string) bool {
+		return strings.Contains(s, "✓ read file30.go\n") && strings.Contains(s, "transcript")
 	})
+	h.keys("g")
+	h.waitScreen("the top", func(s string) bool { return strings.Contains(s, "› go") })
+	h.keys("\x1b")
+	h.waitIdle()
+	if again := strings.Join(h.emu.scrollback(), "\n"); again != scroll {
+		t.Fatalf("scrollback changed:\n%s\n---\n%s", scroll, again)
+	}
 }
 
 // The original complaint: a silent agent looked frozen. The elapsed time
@@ -684,12 +687,12 @@ func TestPasteGoesAsResource(t *testing.T) {
 	}
 }
 
-// Ctrl-T arms the next paste to go in as trusted text; the status line
+// Ctrl-Y arms the next paste to go in as trusted text; the status line
 // shows it, and the transcript says it was not labelled.
 func TestTrustedPaste(t *testing.T) {
 	h := startWith(t, "simple.jsonl", 80, 24, "", "-embedded")
 	h.waitIdle()
-	h.keys("\x14")
+	h.keys("\x19")
 	h.waitScreen("the armed toggle", func(s string) bool { return strings.Contains(s, "[next paste: trusted]") })
 	h.keys(bracketed("trusted text"))
 	h.waitScreen("the text", func(s string) bool {
