@@ -92,3 +92,33 @@ func TestInlineKeys(t *testing.T) {
 		}
 	}
 }
+
+// The agent exiting while the view is open leaves the view, then stops
+// the program once nothing is left to print, so it neither loses lines
+// nor hangs.
+func TestAgentExitFromTranscript(t *testing.T) {
+	step := func(m Model, msg tea.Msg) Model {
+		next, _ := m.Update(msg)
+		return next.(Model)
+	}
+	m := New(nopConn{}, "")
+	m = step(m, tea.WindowSizeMsg{Width: 40, Height: 10})
+	m = step(m, readyMsg{})
+	m = step(m, EventMsg{Event: core.Connected{}})
+	m = step(m, printedMsg{})
+	m = step(m, press(t, "ctrl+t"))
+	if !m.alt {
+		t.Fatal("the view did not open")
+	}
+	m = step(m, EventMsg{Event: core.AgentExited{Err: "gone"}})
+	if m.alt || !m.back || m.stopping {
+		t.Fatalf("after the exit: alt %v back %v stopping %v", m.alt, m.back, m.stopping)
+	}
+	m = step(m, backMsg{})
+	for i := 0; m.printing && i < 10; i++ {
+		m = step(m, printedMsg{})
+	}
+	if !m.stopping {
+		t.Fatal("the program never stops")
+	}
+}

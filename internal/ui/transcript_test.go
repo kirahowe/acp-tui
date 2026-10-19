@@ -130,3 +130,22 @@ func TestQuitFromTranscriptKeepsScrollback(t *testing.T) {
 		t.Fatalf("after quitting:\n%s", all)
 	}
 }
+
+// The list of keys over the view does not hide a request, and keys typed
+// for the view before the request is armed do not answer it.
+func TestHelpOverTranscriptYieldsToRequest(t *testing.T) {
+	h := start(t, "thinking.jsonl", 80, 24)
+	h.waitIdle()
+	h.keys("go\r\x0f?")
+	h.waitScreen("the request", func(s string) bool { return strings.Contains(s, "permission needed") })
+	if s := h.screen(); strings.Contains(s, "any key closes this") || strings.Contains(s, "esc back") {
+		t.Fatalf("the request shares the screen:\n%s", s)
+	}
+	h.keys("y")
+	time.Sleep(core.ArmDelay + 100*time.Millisecond)
+	if o := h.permissionOutcome(); o != "" {
+		t.Fatalf("answered before it was armed: %s", o)
+	}
+	h.keys("n")
+	h.waitOutcome(`{"optionId":"reject","outcome":"selected"}`)
+}
