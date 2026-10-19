@@ -83,6 +83,30 @@ func Preview(content []acp.ToolCallContent) string {
 	return strings.Join(parts, "\n")
 }
 
+// PreviewLabels reads the labels relay gave its preview, under
+// _meta["relay/labels"] on the preview's text block. They say what the
+// preview's text carries, not what the session holds.
+func PreviewLabels(content []acp.ToolCallContent) core.Labels {
+	var l core.Labels
+	for _, c := range content {
+		if c.Content == nil || c.Content.Content.Text == nil {
+			continue
+		}
+		t := c.Content.Content.Text
+		if string(t.Meta[previewKey]) != "true" {
+			continue
+		}
+		var names []string
+		if json.Unmarshal(t.Meta[previewLabelsKey], &names) == nil {
+			l = l.Union(labelNames(names))
+		}
+	}
+	return l
+}
+
+// previewLabelsKey is where relay puts the labels of a preview's text.
+const previewLabelsKey = "relay/labels"
+
 // ItemsParams, ResolveParams and TrustParams are the parameters of relay's
 // extension methods.
 func ItemsParams(session acp.SessionId) map[string]any {
@@ -142,6 +166,7 @@ type rawItem struct {
 	Input        json.RawMessage `json:"input"`
 	Preview      *string         `json:"preview"`
 	Status       string          `json:"status"`
+	FixedArgs    []string        `json:"fixedArgs"`
 }
 
 // Items translates the answer to _relay/items. A plain agent answers
@@ -182,6 +207,7 @@ func Items(raw json.RawMessage, err error, at time.Time) core.ItemsLoaded {
 			if it.Preview != nil {
 				out.Preview = *it.Preview
 			}
+			out.FixedArgs = it.FixedArgs
 		default:
 			continue // a kind this client does not know
 		}

@@ -50,12 +50,22 @@ type Permission struct {
 	// CallID is the tool call's id. Preview is relay's description of
 	// what the call will do, when it sent one (the text block marked
 	// _meta["relay/preview"]), and Labels the session labels on the call.
-	CallID  string
-	Preview string
-	Labels  Labels
-	Options []PermOption
-	Since   time.Time // when it became the one on offer; see ArmDelay
+	// PreviewLabels are the labels relay gave the preview's text, which
+	// are not the session's: the request is shown by both, and the
+	// session's labels do not take them. FixedArgs names the arguments
+	// in Input that the operator set, not the model.
+	CallID        string
+	Preview       string
+	Labels        Labels
+	PreviewLabels Labels
+	FixedArgs     []string
+	Options       []PermOption
+	Since         time.Time // when it became the one on offer; see ArmDelay
 }
+
+// Shown is the labels of what the request shows: the session's, which
+// its input carries, and its preview's.
+func (p Permission) Shown() Labels { return p.Labels.Union(p.PreviewLabels) }
 
 // Label is what to call the call: the tool's name, else the title.
 func (p Permission) Label() string {
@@ -214,7 +224,7 @@ func (r *reducer) permission(e Event) {
 		if len(s.Asks) > 0 {
 			p := s.Asks[0]
 			r.add(Entry{Kind: Request, Text: p.Label(), Detail: p.Input, Preview: p.Preview,
-				PreviewDefang: p.Labels.Contaminated || s.Labels.Contaminated, Final: true})
+				PreviewDefang: p.Shown().Union(s.Labels).Contaminated, Final: true})
 		}
 	}
 }

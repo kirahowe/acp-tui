@@ -397,3 +397,65 @@ func TestHiddenPayloadShowsInDetailAndTrust(t *testing.T) {
 		}
 	}
 }
+
+// Regression (cross-cutting review): a clean, private session's act call
+// whose preview read contaminated service text showed the preview's link
+// live, in the permission box, the transcript and the pane. A preview
+// always defangs, and the input defangs by the preview's labels too.
+func TestACleanSessionsPreviewIsDefanged(t *testing.T) {
+	ask := core.Permission{ID: 1, Name: "send_campaign", Input: `{"group":"Kira only","note":"see https://in.example.net/x"}`,
+		Preview: "Sends to all.\nDetails https://evil.example.net/x?d=1", Since: t0,
+		Labels: core.Labels{Private: true}, PreviewLabels: core.Labels{Private: true, Contaminated: true},
+		FixedArgs: []string{"group"},
+		Options:   []core.PermOption{{ID: "a", Name: "Allow", Kind: core.AllowOnce}}}
+	s := core.State{Phase: core.Busy, Ready: true, Labels: core.Labels{Private: true}, Asks: []core.Permission{ask}}
+	plain := ansi.Strip(View(s, "", "", t0.Add(time.Second), 90, 30).Content)
+	for _, live := range []string{"https://evil", "https://in."} {
+		if strings.Contains(plain, live) {
+			t.Errorf("the permission box shows %s live:\n%s", live, plain)
+		}
+	}
+	if !strings.Contains(plain, "set by your settings: group") {
+		t.Errorf("the fixed argument is not marked:\n%s", plain)
+	}
+	// Even with clean labels everywhere, the preview defangs.
+	ask.PreviewLabels = core.Labels{}
+	s.Asks = []core.Permission{ask}
+	if plain := ansi.Strip(View(s, "", "", t0.Add(time.Second), 90, 30).Content); strings.Contains(plain, "https://evil") {
+		t.Errorf("a clean preview shows a live link:\n%s", plain)
+	}
+	e := core.Entry{Kind: core.Request, Text: "send_campaign", Detail: ask.Input, Preview: ask.Preview, Final: true}
+	if got := ansi.Strip(strings.Join(requestLines(e, 80), "\n")); strings.Contains(got, "https://evil") {
+		t.Errorf("the transcript shows a live preview link:\n%s", got)
+	}
+	clean := proposal
+	clean.Labels = core.Labels{Private: true}
+	clean.Preview = ask.Preview
+	clean.FixedArgs = []string{"group"}
+	ps := paneState(true, clean)
+	ps.Labels = core.Labels{Private: true}
+	ps.Pane.Detail = true
+	got := ansi.Strip(strings.Join(detailBody(ps, clean, 60), "\n") + "\n" + strings.Join(listBlock(ps, clean, true, 60), "\n"))
+	if strings.Contains(got, "https://evil") {
+		t.Errorf("the pane shows a live preview link:\n%s", got)
+	}
+	if !strings.Contains(got, "set by your settings: group") {
+		t.Errorf("the pane does not mark the fixed argument:\n%s", got)
+	}
+}
+
+// Whatever the labels, no preview link is ever live in the box.
+func TestPropertyPreviewLinksNeverLive(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		lab := func(name string) core.Labels {
+			return core.Labels{Private: rapid.Bool().Draw(rt, name+"-p"), Contaminated: rapid.Bool().Draw(rt, name+"-c")}
+		}
+		host := rapid.StringMatching(`[a-z]{1,8}\.[a-z]{2,4}`).Draw(rt, "host")
+		ask := core.Permission{ID: 1, Name: "send", Input: `{}`, Preview: "go to https://" + host + "/p", Since: t0,
+			Labels: lab("session"), PreviewLabels: lab("preview")}
+		s := core.State{Phase: core.Busy, Ready: true, Labels: lab("state"), Asks: []core.Permission{ask}}
+		if plain := ansi.Strip(View(s, "", "", t0.Add(time.Second), 80, 30).Content); strings.Contains(plain, "https://") {
+			rt.Fatalf("a live link:\n%s", plain)
+		}
+	})
+}

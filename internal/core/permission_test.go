@@ -338,3 +338,27 @@ func TestOnlyAlwaysOptionsLeavesCancel(t *testing.T) {
 		t.Fatalf("cancel: %+v", fx)
 	}
 }
+
+// A request's proposal is labelled by its preview's labels, and the
+// session is not: the session saw nothing of the preview.
+func TestPreviewLabelsStayOffTheSession(t *testing.T) {
+	s := State{Phase: Busy, Ready: true, Labels: Labels{Private: true}}
+	s, _ = Reduce(s, PermissionAsked{At: t0, Permission: Permission{ID: 1, Name: "send", CallID: "c1", Preview: "p",
+		Labels: Labels{Private: true}, PreviewLabels: Labels{Contaminated: true}, FixedArgs: []string{"group"},
+		Options: []PermOption{{ID: "a", Kind: AllowOnce}}}})
+	if s.Labels.Contaminated {
+		t.Error("the session took the preview's labels")
+	}
+	var found bool
+	for _, it := range s.Pane.Local {
+		if it.Kind == ProposalItem && it.CallID == "c1" {
+			found = true
+			if !it.Labels.Contaminated || !it.Labels.Private || len(it.FixedArgs) != 1 {
+				t.Errorf("proposal %#v", it)
+			}
+		}
+	}
+	if !found {
+		t.Error("no proposal")
+	}
+}

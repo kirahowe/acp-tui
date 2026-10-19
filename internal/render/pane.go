@@ -233,7 +233,7 @@ func listBlock(s core.State, it core.Item, selected bool, width int) []string {
 		out = append(out, styled(faint, "  "+meta))
 		if it.Preview != "" {
 			n := 0
-			for _, l := range textLines(it.Preview, def, max(width-4, 1)) {
+			for _, l := range textLines(it.Preview, true, max(width-4, 1)) {
 				if n == 3 {
 					out = append(out, styled(faint, "    …"))
 					break
@@ -456,7 +456,8 @@ func detailBody(s core.State, it core.Item, width int) []string {
 		out = append(out, styled(faint, "  proposal · ")+statusWord(it, isCurrent(s, it)))
 		if it.Preview != "" {
 			out = append(out, "", styled(faint, "preview"))
-			for _, l := range textLines(it.Preview, def, inner) {
+			// A preview is a service's text: its links always defang.
+			for _, l := range textLines(it.Preview, true, inner) {
 				out = append(out, "  "+l)
 			}
 		}
@@ -468,7 +469,10 @@ func detailBody(s core.State, it core.Item, width int) []string {
 		for _, l := range wrapAll(in, inner) {
 			out = append(out, "  "+paneLine2(l, def))
 		}
-		out = append(out, newDomainsLine(s, def, width, it.Input, it.Preview)...)
+		for _, l := range fixedLines(it.FixedArgs, def, inner) {
+			out = append(out, "  "+l)
+		}
+		out = append(out, newDomainsLine(s, def || it.Preview != "", width, it.Input, it.Preview)...)
 	default:
 		var ids []string
 		for _, id := range []string{it.Ref, it.Path} {

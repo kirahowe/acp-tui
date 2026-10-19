@@ -51,11 +51,13 @@ type Item struct {
 	SHA256       string
 	CanTrust     bool
 	TrustCommand string
-	// A proposal's tool, arguments (JSON), relay's preview and status.
-	Tool    string
-	Input   string
-	Preview string
-	Status  string
+	// A proposal's tool, arguments (JSON), relay's preview and status,
+	// and the arguments the operator set (Permission.FixedArgs).
+	Tool      string
+	Input     string
+	Preview   string
+	Status    string
+	FixedArgs []string
 	// AskID ties a proposal the client saw itself to its request.
 	AskID uint64
 }
@@ -395,7 +397,8 @@ func (r *reducer) putLocal(it Item) {
 // proposalAsked records a permission request as a proposal.
 func (r *reducer) proposalAsked(pm Permission) {
 	r.putLocal(Item{Kind: ProposalItem, CallID: pm.CallID, Tool: pm.Name, Title: pm.Title, Input: pm.Input,
-		Preview: pm.Preview, Labels: pm.Labels.Union(r.s.Labels), Status: StatusWaitingProposal, AskID: pm.ID})
+		Preview: pm.Preview, Labels: pm.Shown().Union(r.s.Labels), Status: StatusWaitingProposal, AskID: pm.ID,
+		FixedArgs: pm.FixedArgs})
 	r.refresh()
 }
 

@@ -53,8 +53,10 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 		title += " · " + t
 	}
 	// The title can quote the input (agentloop puts the arguments in
-	// it), so its links defang as the input's do.
-	if p.Labels.Contaminated || s.Labels.Contaminated {
+	// it), so its links defang as the input's do. The request is shown
+	// by the labels of all it shows: the session's and its preview's.
+	def := p.Shown().Union(s.Labels).Contaminated
+	if def {
 		title = Defang(title)
 	}
 	var lines []string
@@ -92,12 +94,10 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 	}
 	budget := max(room-2-len(lines)-len(opts)-1, 1)
 	// Relay's preview of what the call will do goes above the input, cut
-	// the same way. It is relay's text, not the model's, but it can carry
-	// untrusted words, so its links defang once the session is
-	// contaminated.
+	// the same way. It is what a service said, which can be anyone's
+	// words, so its links always defang, whatever the labels.
 	if p.Preview != "" {
-		def := p.Labels.Contaminated || s.Labels.Contaminated
-		pv := textLines(p.Preview, def, inner)
+		pv := textLines(p.Preview, true, inner)
 		show := min(permissionBody, max(budget/2, 1))
 		for i, l := range pv {
 			if i == show-1 && len(pv) > show {
@@ -107,14 +107,14 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 			}
 			lines = append(lines, l)
 		}
-		lines = append(lines, newDomainsLine(s, def, inner, p.Preview)...)
+		lines = append(lines, newDomainsLine(s, true, inner, p.Preview)...)
 		budget = max(budget-show-1, 1)
 	}
 	body := min(permissionBody, budget)
 	// The input shows exactly, escaped, except that once the session is
 	// contaminated its links defang: a click on one to look at it would
 	// send what it carries before anything is approved.
-	in := wrapAll(defangIf(p.Labels.Contaminated || s.Labels.Contaminated, core.FaithfulLines(p.Input)), inner)
+	in := wrapAll(defangIf(def, core.FaithfulLines(p.Input)), inner)
 	if len(in) == 0 {
 		in = []string{"(no input)"}
 	}
@@ -125,9 +125,23 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 		}
 		lines = append(lines, styled(faint, l))
 	}
+	lines = append(lines, fixedLines(p.FixedArgs, def, inner)...)
 	lines = append(lines, opts...)
 	lines = append(lines, styled(faint, truncate(hint, inner)))
 	return box("permission needed", lines, width)
+}
+
+// fixedLines says which arguments of the input the operator set, not the
+// model, or nothing when there are none.
+func fixedLines(names []string, def bool, width int) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	esc := make([]string, len(names))
+	for i, n := range names {
+		esc[i] = paneLine(n, def)
+	}
+	return hang("", styled(faint, "set by your settings: ")+strings.Join(esc, ", "), width)
 }
 
 // defangIf is lines with their links defanged when def is set.
@@ -154,7 +168,7 @@ func requestLines(e core.Entry, width int) []string {
 		out = append(out, lead+l)
 	}
 	if e.Preview != "" {
-		for _, l := range textLines(e.Preview, e.PreviewDefang, max(width-6, 1)) {
+		for _, l := range textLines(e.Preview, true, max(width-6, 1)) {
 			out = append(out, "      "+l)
 		}
 	}

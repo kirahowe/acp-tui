@@ -5,6 +5,8 @@ package wire
 import (
 	"encoding/json"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -158,7 +160,8 @@ func Response(r acp.PromptResponse, err error, at time.Time) core.Event {
 // handle for answering it.
 func Permission(req acp.RequestPermissionRequest, id uint64, at time.Time) core.PermissionAsked {
 	p := core.Permission{ID: id, Input: rawJSON(req.ToolCall.RawInput), CallID: string(req.ToolCall.ToolCallId),
-		Preview: Preview(req.ToolCall.Content)}
+		Preview: Preview(req.ToolCall.Content), PreviewLabels: PreviewLabels(req.ToolCall.Content),
+		FixedArgs: fixedArgs(req.ToolCall.Meta)}
 	p.Labels, _ = labelsOf(req.ToolCall.Meta)
 	if n := req.ToolCall.Name; n != nil {
 		p.Name = *n
@@ -218,6 +221,19 @@ func PermissionLabels(req acp.RequestPermissionRequest, at time.Time) (core.Labe
 	l, ok := labelsOf(req.ToolCall.Meta)
 	return core.LabelsSeen{At: at, Labels: l}, ok
 }
+
+// fixedArgs names the arguments agentloop says the operator fixed, under
+// _meta["agentloop/fixed_args"], sorted.
+func fixedArgs(meta map[string]json.RawMessage) []string {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(meta[fixedArgsKey], &m) != nil || len(m) == 0 {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(m))
+}
+
+// fixedArgsKey is where agentloop names the arguments the operator set.
+const fixedArgsKey = "agentloop/fixed_args"
 
 // labelsOf reads agentloop's labels from a _meta map.
 func labelsOf(meta map[string]json.RawMessage) (core.Labels, bool) {

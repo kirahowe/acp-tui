@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	acp "github.com/caelis-labs/acp-go-sdk"
@@ -174,5 +175,31 @@ func TestTrustParams(t *testing.T) {
 	b, err := json.Marshal(TrustParams("s", "shown/x.md", "412", "ab"))
 	if err != nil || string(b) != `{"path":"shown/x.md","sessionId":"s","sha256":"ab","version":412}` {
 		t.Errorf("%s %v", b, err)
+	}
+}
+
+// The preview's labels and the fixed arguments are read apart from the
+// session's labels, which they do not change.
+func TestPermissionPreviewLabelsAndFixedArgs(t *testing.T) {
+	var req acp.RequestPermissionRequest
+	if err := json.Unmarshal([]byte(`{"sessionId":"s","toolCall":{"toolCallId":"c1","name":"send","rawInput":{"group":"Kira only"},
+		"content":[{"type":"content","content":{"type":"text","text":"Sends X","_meta":{"relay/preview":true,"relay/labels":["contaminated","private"]}}}],
+		"_meta":{"agentloop/labels":["private"],"agentloop/fixed_args":{"send_now":false,"group":"Kira only"}}},
+		"options":[{"optionId":"a","name":"Allow","kind":"allow_once"}]}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	p := Permission(req, 3, t0).Permission
+	if p.PreviewLabels != (core.Labels{Private: true, Contaminated: true}) || p.Labels != (core.Labels{Private: true}) {
+		t.Errorf("labels %#v / %#v", p.Labels, p.PreviewLabels)
+	}
+	if strings.Join(p.FixedArgs, ",") != "group,send_now" {
+		t.Errorf("fixed %v", p.FixedArgs)
+	}
+	if l, _ := PermissionLabels(req, t0); l.Labels.Contaminated {
+		t.Error("the preview's labels reached the session's")
+	}
+	got := Items(json.RawMessage(`{"items":[{"kind":"proposal","callId":"c","tool":"send","input":{},"labels":["contaminated"],"fixedArgs":["group"],"status":"waiting"}]}`), nil, t0)
+	if len(got.Items) != 1 || strings.Join(got.Items[0].FixedArgs, ",") != "group" {
+		t.Errorf("items %#v", got)
 	}
 }

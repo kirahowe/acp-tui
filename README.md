@@ -92,8 +92,13 @@ checked, or checked against an agent that cannot answer, shows as
 model's text is only searched for references.
 
 Text from a contaminated item sits under an `untrusted` mark in reverse
-video, with its URLs defanged. A link to a domain that no approved or
-trusted item has shown so far in this run carries `[new domain]`.
+video, with its URLs defanged. A preview's URLs are always defanged,
+since a preview is what a service said. relay labels a preview's text
+apart from the session (`relay/labels` on the preview block), and a
+request or proposal is shown by both sets of labels. Arguments the
+operator fixed in relay's settings are listed under "set by your
+settings". A link to a domain that no approved or trusted item has shown
+so far in this run carries `[new domain]`.
 
 Keys, once Ctrl-X has given the pane focus:
 
