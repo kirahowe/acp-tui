@@ -242,11 +242,15 @@ func TestSimpleReply(t *testing.T) {
 		t.Fatalf("%d lines scrolled off a nearly empty screen:\n%s", n, all)
 	}
 	// The input box and the status line sit at the bottom of the screen,
-	// with the transcript just above them.
-	rows := strings.Split(strings.TrimRight(h.screen(), "\n"), "\n")
-	if n := len(rows); n != 24 || !strings.Contains(rows[n-1], "ready") || !strings.HasPrefix(rows[n-2], "╰") {
-		t.Fatalf("the input box is not at the bottom:\n%s", h.screen())
-	}
+	// with the transcript just above them, once the first print has moved
+	// the frame down (it waits readyDelay after the first frame, which a
+	// warm run can beat to idle).
+	var rows []string
+	h.waitScreen("the input box at the bottom", func(scr string) bool {
+		rows = strings.Split(strings.TrimRight(scr, "\n"), "\n")
+		n := len(rows)
+		return n == 24 && strings.Contains(rows[n-1], "ready") && strings.HasPrefix(rows[n-2], "╰")
+	})
 	var shown []string
 	for _, r := range rows {
 		if strings.TrimSpace(r) != "" {
