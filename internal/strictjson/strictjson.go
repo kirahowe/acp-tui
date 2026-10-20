@@ -4,9 +4,11 @@
 // The dialect is RFC 8259 JSON in valid UTF-8, one value and only
 // whitespace after it, no duplicate member names at any depth (compared
 // after unescaping), member names matched exactly, no byte order mark, no
-// unpaired surrogate escapes, nesting at most MaxDepth levels and a number
-// literal at most MaxNumber characters. encoding/json/v2 enforces all of it
-// except the two limits, which Valid adds.
+// unpaired surrogate escapes, nesting at most MaxDepth levels, a number
+// literal at most MaxNumber characters, and a number's exponent (the integer
+// after e or E, sign included) within ±MaxExponent by value.
+// encoding/json/v2 enforces all of it except the three limits, which Valid
+// adds.
 //
 // The ACP SDK decodes with encoding/json v1, which matches member names
 // case-insensitively. ForV1 removes the members v1 would read under a name
@@ -30,11 +32,14 @@ const (
 	MaxDepth = 128
 	// MaxNumber is the longest number literal allowed, in characters.
 	MaxNumber = 1000
+	// MaxExponent bounds a number's exponent either way.
+	MaxExponent = 9999
 )
 
 var (
 	errDepth     = fmt.Errorf("nested deeper than %d levels", MaxDepth)
 	errNumber    = fmt.Errorf("number literal longer than %d characters", MaxNumber)
+	errExponent  = fmt.Errorf("exponent outside ±%d", MaxExponent)
 	errTrailing  = errors.New("more than one value")
 	errNotObject = errors.New("not a JSON object")
 
@@ -55,6 +60,9 @@ func Valid(b []byte) error {
 			}
 			if len(v) > MaxNumber {
 				return errNumber
+			}
+			if !exponentInBounds(v) {
+				return errExponent
 			}
 		default: // includes 0, the kind of an error or the end
 			if _, err := dec.ReadToken(); err != nil {
@@ -340,4 +348,23 @@ func without(b []byte, drop map[jsontext.Pointer]bool) ([]byte, error) {
 		}
 	}
 	return bytes.TrimRight(out.Bytes(), "\n"), nil
+}
+
+// exponentInBounds reports whether the exponent of the number literal v,
+// if it has one, is within ±MaxExponent. Leading zeros do not count, so
+// the bound is on the value.
+func exponentInBounds(v []byte) bool {
+	i := bytes.IndexAny(v, "eE")
+	if i < 0 {
+		return true
+	}
+	digits := bytes.TrimLeft(bytes.TrimLeft(v[i+1:], "+-"), "0")
+	if len(digits) > 4 {
+		return false
+	}
+	n := 0
+	for _, c := range digits {
+		n = n*10 + int(c-'0')
+	}
+	return n <= MaxExponent
 }

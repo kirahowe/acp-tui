@@ -262,7 +262,8 @@ process wrote, by the one dialect that relay and agentloop also use
 `encoding/json/v2`. A message is one JSON object in valid UTF-8, with
 nothing but whitespace after it. A name may not appear twice in an
 object at any depth, and names match exactly, case included. Nesting
-stops at 128 levels and a number literal at 1000 characters. Unknown
+stops at 128 levels, a number literal at 1000 characters, and an
+exponent at 9999 either way (by value, so `1e+0009999` passes). Unknown
 members are ignored. `testdata/strict-json/cases.jsonl` is a copy of the
 table of hostile lines shared by the three repos, and the tests run
 every case through acp-tui's reader.

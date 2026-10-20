@@ -3,6 +3,7 @@ package strictjson
 import (
 	"bytes"
 	jsonv1 "encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -213,6 +214,25 @@ func TestForV1AgreesWithV2(t *testing.T) {
 		}
 		if (loose.Params == nil) != (strict.Params == nil) || loose.Params != nil && loose.Params.Title != strict.Params.Title {
 			t.Fatalf("%s -> %s: params differ", in, out)
+		}
+	})
+}
+
+// An exponent passes exactly when its value is within ±MaxExponent,
+// however many leading zeros it has.
+func TestValidExponentBound(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		n := rapid.IntRange(-3*MaxExponent, 3*MaxExponent).Draw(t, "exp")
+		zeros := strings.Repeat("0", rapid.IntRange(0, 30).Draw(t, "zeros"))
+		sign := rapid.SampledFrom([]string{"", "+"}).Draw(t, "sign")
+		if n < 0 {
+			sign = "-"
+		}
+		abs := max(n, -n)
+		lit := "1" + rapid.SampledFrom([]string{"e", "E"}).Draw(t, "e") + sign + zeros + strconv.Itoa(abs)
+		err := Valid([]byte(`{"n":` + lit + `}`))
+		if want := abs <= MaxExponent; (err == nil) != want {
+			t.Fatalf("%s: err %v, want accepted %v", lit, err, want)
 		}
 	})
 }
