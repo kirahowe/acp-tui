@@ -427,13 +427,15 @@ func Cards(raw json.RawMessage, err error, at time.Time) core.CardsLoaded {
 }
 
 // CardOpOutcome translates the answer to _relay/cards/op on card id. A
-// JSON-RPC error's message is relay's refusal.
+// JSON-RPC error's message is relay's refusal, and "changed": false says
+// the op changed nothing.
 func CardOpOutcome(id int64, raw json.RawMessage, err error, at time.Time) core.CardOpDone {
 	if err != nil {
 		return core.CardOpDone{At: at, CardID: id, Err: errText(err)}
 	}
 	var r struct {
-		Card json.RawMessage `json:"card"`
+		Card    json.RawMessage `json:"card"`
+		Changed *bool           `json:"changed"`
 	}
 	if json.Unmarshal(raw, &r) != nil || r.Card == nil {
 		return core.CardOpDone{At: at, CardID: id, Err: "relay's answer could not be read"}
@@ -442,7 +444,8 @@ func CardOpOutcome(id int64, raw json.RawMessage, err error, at time.Time) core.
 	if !ok || c.ID != id {
 		return core.CardOpDone{At: at, CardID: id, Err: "relay's answer could not be read"}
 	}
-	return core.CardOpDone{At: at, CardID: id, Card: &c}
+	// An answer without the field is taken as a change.
+	return core.CardOpDone{At: at, CardID: id, Card: &c, Unchanged: r.Changed != nil && !*r.Changed}
 }
 
 // CardsChanged translates a _relay/cards/changed notification. ok is

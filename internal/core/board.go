@@ -182,12 +182,14 @@ type (
 		Cards []Card
 	}
 	// CardOpDone is relay's answer to _relay/cards/op on card Card: the
-	// card as it now stands, or relay's refusal in Err.
+	// card as it now stands, or relay's refusal in Err. Unchanged says
+	// relay appended nothing because the op would change nothing.
 	CardOpDone struct {
-		At     time.Time
-		CardID int64
-		Card   *Card
-		Err    string
+		At        time.Time
+		CardID    int64
+		Card      *Card
+		Unchanged bool
+		Err       string
 	}
 )
 
@@ -292,10 +294,13 @@ func (r *reducer) board(e Event) {
 			for _, c := range e.Cards {
 				b.put(c)
 			}
-			// A notification that overtook the answer is newer.
+			// A notification that overtook the answer is newer: it may
+			// replace a card in the answer or bring one the answer
+			// predates. put keeps whichever copy is newer and leaves out a
+			// card archived since.
 			for _, c := range held {
-				if i := slices.IndexFunc(b.Cards, func(x Card) bool { return x.ID == c.ID }); i >= 0 && c.Rev > b.Cards[i].Rev {
-					b.Cards[i] = c
+				if c.Rev > e.Rev || slices.ContainsFunc(b.Cards, func(x Card) bool { return x.ID == c.ID }) {
+					b.put(c)
 				}
 			}
 			b.Rev = max(b.Rev, e.Rev)
@@ -323,7 +328,9 @@ func (r *reducer) board(e Event) {
 		}
 		if e.Card != nil {
 			b.put(*e.Card)
-			if e.Card.Status == CardArchived {
+			if e.Unchanged {
+				b.Message = "Nothing to change."
+			} else if e.Card.Status == CardArchived {
 				b.Message = "Archived card " + strconv.FormatInt(e.CardID, 10) + "."
 			}
 		}

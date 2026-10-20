@@ -104,6 +104,15 @@ func TestCardOpOutcome(t *testing.T) {
 	if refused.Card != nil || refused.Err != "Item 9 is not on card 1840." {
 		t.Errorf("%+v", refused)
 	}
+	if ok.Unchanged {
+		t.Error("an answer without changed reads as unchanged")
+	}
+	if c := CardOpOutcome(1840, json.RawMessage(`{"card":`+trackerWire+`,"changed":true}`), nil, t0); c.Unchanged || c.Card == nil {
+		t.Errorf("%+v", c)
+	}
+	if same := CardOpOutcome(1840, json.RawMessage(`{"card":`+trackerWire+`,"changed":false}`), nil, t0); !same.Unchanged || same.Card == nil || same.Err != "" {
+		t.Errorf("%+v", same)
+	}
 	// An answer about another card is not taken.
 	if other := CardOpOutcome(1, json.RawMessage(`{"card":`+trackerWire+`}`), nil, t0); other.Err == "" || other.Card != nil {
 		t.Errorf("%+v", other)

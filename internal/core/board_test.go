@@ -205,6 +205,45 @@ func TestRefusalIsShown(t *testing.T) {
 	}
 }
 
+func TestUnchangedOpSaysSo(t *testing.T) {
+	s := onBoard(checklist(10, 10, true))
+	s, _ = boardKeys(s, PaneEnter, PaneDown, PaneMark)
+	same := checklist(10, 10, true)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Card: &same, Unchanged: true})
+	b := s.Pane.Board
+	if b.Message != "Nothing to change." || b.Sending != 0 || b.Failure != "" {
+		t.Fatalf("%+v", b)
+	}
+}
+
+// A notification can reach the client before the answer to _relay/cards
+// it follows, carrying a card the answer predates. The card stays.
+func TestNotificationBeforeTheAnswerKeepsANewCard(t *testing.T) {
+	s, _ := feed(State{}, Connected{At: t0}, key(t0, PaneToggle), key(t0, PaneBoard),
+		CardsChanged{At: t0, Rev: 101, Cards: []Card{checklist(101, 101)}},
+		CardsLoaded{At: t0, Rev: 100, Cards: []Card{checklist(50, 60)}})
+	var ids []int64
+	for _, c := range s.Pane.Board.Cards {
+		ids = append(ids, c.ID)
+	}
+	if !slices.Equal(ids, []int64{50, 101}) {
+		t.Fatalf("cards %v", ids)
+	}
+	// A card held from an older answer that relay no longer lists goes.
+	s, _ = Reduce(s, CardsLoaded{At: t0, Rev: 120, Cards: []Card{checklist(101, 101)}})
+	if len(s.Pane.Board.Cards) != 1 || s.Pane.Board.Cards[0].ID != 101 {
+		t.Fatalf("%+v", s.Pane.Board.Cards)
+	}
+	// A notification that archived a card before the answer keeps it off.
+	gone := checklist(101, 130)
+	gone.Status = CardArchived
+	s, _ = Reduce(s, CardsChanged{At: t0, Rev: 130, Cards: []Card{gone}})
+	s, _ = Reduce(s, CardsLoaded{At: t0, Rev: 125, Cards: []Card{checklist(101, 101)}})
+	if len(s.Pane.Board.Cards) != 0 {
+		t.Fatalf("%+v", s.Pane.Board.Cards)
+	}
+}
+
 func TestTrackerCellCycles(t *testing.T) {
 	s := onBoard(tracker(30, 30))
 	s, _ = boardKeys(s, PaneEnter, PaneDown, PaneRight)
