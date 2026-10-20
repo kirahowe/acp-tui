@@ -1,0 +1,19 @@
+{
+  "request" : {
+    "method" : "_relay/cards/op",
+    "params" : {
+      "card" : 3,
+      "op" : "tick",
+      "item" : 9,
+      "sessionId" : "fixture-session"
+    }
+  },
+  "response" : {
+    "jsonrpc" : "2.0",
+    "id" : 4,
+    "error" : {
+      "code" : -32000,
+      "message" : "Card 3 has no item 9."
+    }
+  }
+}

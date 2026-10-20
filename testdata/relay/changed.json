@@ -1,0 +1,81 @@
+{
+  "jsonrpc" : "2.0",
+  "method" : "_relay/cards/changed",
+  "params" : {
+    "rev" : 12,
+    "cards" : [ {
+      "owner" : "hub",
+      "progress" : {
+        "done" : 4,
+        "total" : 12
+      },
+      "columns" : [ {
+        "text" : "Jun",
+        "outsider" : false,
+        "rev" : 5,
+        "id" : 1
+      }, {
+        "text" : "Jul",
+        "outsider" : false,
+        "rev" : 5,
+        "id" : 2
+      }, {
+        "text" : "Aug",
+        "outsider" : false,
+        "rev" : 5,
+        "id" : 3
+      }, {
+        "text" : "Sep",
+        "outsider" : false,
+        "rev" : 5,
+        "id" : 4
+      } ],
+      "rev" : 12,
+      "complete" : false,
+      "id" : 5,
+      "addedAt" : "2026-10-20T16:56:55.180253Z",
+      "labels" : [ "private" ],
+      "status" : "active",
+      "text" : "Card 5: Catch up monthly financials (tracker, 4 of 12 done, rev 12) [[card:5]]\nColumns: 1 Jun, 2 Jul, 3 Aug, 4 Sep\nRow 1 BMO: Jun done, Jul done, Aug open, Sep open\nRow 2 RBC: Jun done, Jul open, Aug open, Sep open\nRow 3 Canadian Tire: Jun skip, Jul open, Aug open, Sep open",
+      "kind" : "tracker",
+      "title" : {
+        "text" : "Catch up monthly financials",
+        "outsider" : false,
+        "rev" : 5
+      },
+      "cells" : [ {
+        "row" : 1,
+        "column" : 1,
+        "state" : "done"
+      }, {
+        "row" : 1,
+        "column" : 2,
+        "state" : "done"
+      }, {
+        "row" : 2,
+        "column" : 1,
+        "state" : "done"
+      }, {
+        "row" : 3,
+        "column" : 1,
+        "state" : "skip"
+      } ],
+      "rows" : [ {
+        "text" : "BMO",
+        "outsider" : false,
+        "rev" : 5,
+        "id" : 1
+      }, {
+        "text" : "RBC",
+        "outsider" : false,
+        "rev" : 5,
+        "id" : 2
+      }, {
+        "text" : "Canadian Tire",
+        "outsider" : false,
+        "rev" : 5,
+        "id" : 3
+      } ]
+    } ]
+  }
+}

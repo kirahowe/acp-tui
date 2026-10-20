@@ -1,0 +1,57 @@
+{
+  "request" : {
+    "method" : "_relay/cards/op",
+    "params" : {
+      "card" : 3,
+      "op" : "tick",
+      "item" : 2,
+      "sessionId" : "fixture-session"
+    }
+  },
+  "response" : {
+    "jsonrpc" : "2.0",
+    "id" : 3,
+    "result" : {
+      "card" : {
+        "owner" : "hub",
+        "progress" : {
+          "done" : 2,
+          "total" : 3
+        },
+        "rev" : 11,
+        "complete" : false,
+        "id" : 3,
+        "addedAt" : "2026-10-20T16:56:55.170169Z",
+        "labels" : [ "private" ],
+        "items" : [ {
+          "text" : "Make a folder for the statements",
+          "outsider" : false,
+          "rev" : 3,
+          "id" : 1,
+          "done" : true
+        }, {
+          "text" : "Download one account's months in one login",
+          "outsider" : false,
+          "rev" : 3,
+          "id" : 2,
+          "done" : true
+        }, {
+          "text" : "Import into the app, then the spreadsheet",
+          "outsider" : false,
+          "rev" : 3,
+          "id" : 3,
+          "done" : false
+        } ],
+        "status" : "active",
+        "text" : "Card 3: How to work through it (checklist, 2 of 3 done, rev 11) [[card:3]]\n[x] 1 Make a folder for the statements\n[x] 2 Download one account's months in one login\n[ ] 3 Import into the app, then the spreadsheet",
+        "kind" : "checklist",
+        "title" : {
+          "text" : "How to work through it",
+          "outsider" : false,
+          "rev" : 3
+        }
+      },
+      "changed" : false
+    }
+  }
+}
