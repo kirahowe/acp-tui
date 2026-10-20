@@ -91,7 +91,7 @@ func TestPermissionPreviewAndLabels(t *testing.T) {
 		"options":[{"optionId":"a","name":"Allow","kind":"allow_once"}]}`), &req); err != nil {
 		t.Fatal(err)
 	}
-	p := Permission(req, 3, t0).Permission
+	p := Permission(req, "", 3, t0).Permission
 	if p.Preview != "Sends X" || p.CallID != "c1" || p.Labels != (core.Labels{Private: true}) {
 		t.Errorf("permission %#v", p)
 	}
@@ -188,7 +188,7 @@ func TestPermissionPreviewLabelsAndFixedArgs(t *testing.T) {
 		"options":[{"optionId":"a","name":"Allow","kind":"allow_once"}]}`), &req); err != nil {
 		t.Fatal(err)
 	}
-	p := Permission(req, 3, t0).Permission
+	p := Permission(req, "", 3, t0).Permission
 	if p.PreviewLabels != (core.Labels{Private: true, Contaminated: true}) || p.Labels != (core.Labels{Private: true}) {
 		t.Errorf("labels %#v / %#v", p.Labels, p.PreviewLabels)
 	}

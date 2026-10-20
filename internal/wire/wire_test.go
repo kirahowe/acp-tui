@@ -234,7 +234,7 @@ func TestPermission(t *testing.T) {
 		{"optionId":"reject","name":"Reject","kind":"reject_once"},{"optionId":"x","name":"Odd","kind":"future_kind"}]}`), &req); err != nil {
 		t.Fatal(err)
 	}
-	got := Permission(req, 7, t0)
+	got := Permission(req, "", 7, t0)
 	want := core.PermissionAsked{At: t0, Permission: core.Permission{
 		ID: 7, Name: "web_fetch", Title: `web_fetch {"url":"https://x.test"}`, Input: `{"url":"https://x.test"}`, CallID: "call_1",
 		Options: []core.PermOption{{ID: "allow", Name: "Allow once", Kind: core.AllowOnce}, {ID: "reject", Name: "Reject", Kind: core.RejectOnce}, {ID: "x", Name: "Odd", Kind: "future_kind"}},
@@ -246,7 +246,7 @@ func TestPermission(t *testing.T) {
 		t.Errorf("an unknown kind %q counts as allow or reject", k)
 	}
 	// Bare request: no name, no title, no input.
-	bare := Permission(acp.RequestPermissionRequest{ToolCall: acp.ToolCallUpdate{ToolCallId: "c"}}, 1, t0)
+	bare := Permission(acp.RequestPermissionRequest{ToolCall: acp.ToolCallUpdate{ToolCallId: "c"}}, "", 1, t0)
 	if bare.Name != "" || bare.Title != "" || bare.Input != "" || len(bare.Options) != 0 {
 		t.Errorf("bare request %#v", bare)
 	}
@@ -352,5 +352,36 @@ func TestConnectedEmbedded(t *testing.T) {
 	}
 	if c := Connected(acp.InitializeResponse{}, acp.NewSessionResponse{}, t0).(core.Connected); c.Embedded {
 		t.Error("embedded without the capability")
+	}
+}
+
+// relay#52: a permission request's input, read from its params, keeps
+// its numbers as written.
+func TestExactInput(t *testing.T) {
+	params := []byte(`{"sessionId":"s","toolCall":{"toolCallId":"c","rawInput":{"n":9007199254740993,"d":0.1000000000000000055511151231257827,"s":"<a>"}},"options":[]}`)
+	// In rawJSON's form, which escapes < and > as encoding/json does.
+	want := `{"d":0.1000000000000000055511151231257827,"n":9007199254740993,"s":"\u003ca\u003e"}`
+	if got := ExactInput(params); got != want {
+		t.Fatalf("input %s, want %s", got, want)
+	}
+	var req acp.RequestPermissionRequest
+	if err := json.Unmarshal(params, &req); err != nil {
+		t.Fatal(err)
+	}
+	if got := Permission(req, ExactInput(params), 1, t0).Input; got != want {
+		t.Errorf("Permission shows %s", got)
+	}
+	if got := Permission(req, "", 1, t0).Input; got != `{"d":0.1,"n":9007199254740992,"s":"\u003ca\u003e"}` {
+		t.Errorf("without it, Permission shows %s", got)
+	}
+	for _, other := range []string{
+		`{"sessionId":"s","toolCall":{"toolCallId":"c"},"options":[]}`,
+		`{"sessionId":"s","toolCall":{"toolCallId":"c","rawInput":null},"options":[]}`,
+		`{"toolCall":{"rawInput":{"n":1},"rawInput":{"n":2}}}`,
+		``,
+	} {
+		if got := ExactInput([]byte(other)); got != "" {
+			t.Errorf("read %s from %s", got, other)
+		}
 	}
 }

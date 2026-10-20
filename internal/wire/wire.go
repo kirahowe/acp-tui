@@ -3,7 +3,9 @@
 package wire
 
 import (
+	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"maps"
 	"slices"
@@ -157,10 +159,53 @@ func Response(r acp.PromptResponse, err error, at time.Time) core.Event {
 	return core.PromptFailed{At: at, Message: msg}
 }
 
+// ExactInput reads the params of a session/request_permission, as the SDK
+// received them (acp.InboundParamsFromContext), for the tool call's
+// rawInput as written. The SDK decodes rawInput into any with
+// encoding/json v1, which rounds every number through a float64
+// (9007199254740993 comes out 9007199254740992), so the permission prompt
+// would show a value the call does not run on (relay#52). The result is
+// in rawJSON's form, keys sorted, with its numbers as written, or "" when
+// the params hold no rawInput.
+func ExactInput(params []byte) string {
+	var p struct {
+		ToolCall struct {
+			RawInput jsontext.Value `json:"rawInput"`
+		} `json:"toolCall"`
+	}
+	if strictjson.Unmarshal(params, &p) != nil {
+		return ""
+	}
+	return exactJSON(p.ToolCall.RawInput)
+}
+
+// exactJSON is raw in rawJSON's form, keys sorted and compact, with every
+// number kept as written.
+func exactJSON(raw jsontext.Value) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if dec.Decode(&v) != nil || v == nil {
+		return ""
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
 // Permission translates a session/request_permission. id is the shell's
-// handle for answering it.
-func Permission(req acp.RequestPermissionRequest, id uint64, at time.Time) core.PermissionAsked {
-	p := core.Permission{ID: id, Input: rawJSON(req.ToolCall.RawInput), CallID: string(req.ToolCall.ToolCallId),
+// handle for answering it. input is the tool call's rawInput as written,
+// from ExactInput, or "" to show the SDK's decoding of it.
+func Permission(req acp.RequestPermissionRequest, input string, id uint64, at time.Time) core.PermissionAsked {
+	if input == "" {
+		input = rawJSON(req.ToolCall.RawInput)
+	}
+	p := core.Permission{ID: id, Input: input, CallID: string(req.ToolCall.ToolCallId),
 		Preview: Preview(req.ToolCall.Content), PreviewLabels: PreviewLabels(req.ToolCall.Content),
 		FixedArgs: fixedArgs(req.ToolCall.Meta)}
 	p.Labels, _ = labelsOf(req.ToolCall.Meta)

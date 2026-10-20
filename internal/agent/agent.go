@@ -176,7 +176,12 @@ func (c client) RequestPermission(ctx context.Context, req acp.RequestPermission
 	if l, ok := wire.PermissionLabels(req, now); ok {
 		a.emit(l)
 	}
-	a.emit(wire.Permission(req, id, now))
+	// The request's own params, as received, for its input as written.
+	input := ""
+	if params, ok := acp.InboundParamsFromContext(ctx); ok {
+		input = wire.ExactInput(params)
+	}
+	a.emit(wire.Permission(req, input, id, now))
 	select {
 	case ans := <-reply:
 		return wire.Outcome(ans), nil

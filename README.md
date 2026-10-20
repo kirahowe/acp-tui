@@ -69,8 +69,11 @@ queue and are answered in order; ending the turn cancels the rest.
 Nothing the agent wrote in a request is dropped. Control characters, bidi
 and other format characters, and any other code point that does not print
 show as `\uXXXX` escapes, so the input reads back as JSON to exactly what
-will run. Wrapping adds line breaks; nothing is cut except in the
-collapsed box, where `v` shows the rest.
+will run. Numbers show as the agent wrote them: acp-tui reads the input
+from the request's own params, not from the ACP SDK's decoding, which
+would round `9007199254740993` to `9007199254740992`. Wrapping adds
+line breaks; nothing is cut except in the collapsed box, where `v`
+shows the rest.
 
 If the agent reports session labels in `_meta["agentloop/labels"]` on tool
 calls, usage updates and session_info_update, the status line shows them: `[private]` in bold
