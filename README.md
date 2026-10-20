@@ -188,8 +188,9 @@ acp-tui never changes a card itself. Each key sends relay an op with
 card is marked `sending…`, and a key for another op is dropped with a
 note saying so. When relay refuses an op, the pane shows "Refused." with
 relay's reason, until relay takes your next op or you close the input.
-If the op carried text, the input opens again with what you typed. After a refused edit it carries the card's current revision,
-so Enter sends your text over the newer change; Esc drops it. Leaving
+If the op carried text, the input opens again with what you typed.
+After a refused edit it carries the card's current revision, so Enter
+sends your text over the newer change; Esc drops it. Leaving
 the pane with ctrl+x keeps an open input as it was.
 
 Card text is shown as relay sent it. relay has already made hidden

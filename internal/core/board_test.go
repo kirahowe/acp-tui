@@ -578,6 +578,22 @@ func TestRefusalGoesOnSuccessOrEsc(t *testing.T) {
 	}
 }
 
+// A refusal goes too when its card leaves the board under a reopened
+// input, and the board says the card has gone.
+func TestRefusalGoesWhenTheCardLeaves(t *testing.T) {
+	s := onBoard(checklist(10, 10))
+	s, _ = boardKeys(s, PaneEnter, PaneAdd)
+	s = typeText(s, "yyy")
+	s, _ = boardKeys(s, PaneEnter)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Err: "too long"})
+	gone := checklist(10, 20)
+	gone.Status = CardArchived
+	s, _ = Reduce(s, CardsChanged{At: t0, Rev: 20, Cards: []Card{gone}})
+	if b := s.Pane.Board; b.Input != nil || b.Message != "That card has left the board." || b.Failure != "" {
+		t.Fatalf("%+v", b)
+	}
+}
+
 // From the list, a, A and E do nothing: they act on what only an open
 // card shows. e retitles the selected card, as the list's hint says.
 func TestListOffersOnlyRetitle(t *testing.T) {

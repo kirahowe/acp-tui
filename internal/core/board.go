@@ -268,8 +268,9 @@ func (r *reducer) keepBoardSelection() {
 	if slices.ContainsFunc(b.Cards, func(c Card) bool { return c.ID == b.SelID }) {
 		return
 	}
-	if (b.Detail || b.Input != nil || b.Confirm != 0) && b.Message == "" {
-		b.Message = "That card has left the board."
+	// A refusal of an op on the card no longer holds once the card is gone.
+	if (b.Detail || b.Input != nil || b.Confirm != 0) && (b.Message == "" || b.Message == refusedNotice) {
+		b.Message, b.Failure = "That card has left the board.", ""
 	}
 	b.Detail, b.Input, b.Confirm, b.Line, b.Col = false, nil, 0, 0, 0
 	if len(b.Cards) > 0 {
