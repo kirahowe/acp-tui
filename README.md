@@ -118,6 +118,7 @@ Keys, once Ctrl-X has given the pane focus:
 - Up and down, or k and j, select an item. Enter opens it; up and down,
   Page Up and Page Down scroll.
 - t starts a trust of the selected item.
+- b switches to the board (see below), and back.
 - Esc goes back from an item, then returns to the input. Ctrl-X does the
   same from anywhere.
 
@@ -137,6 +138,55 @@ not take trust from this client, the pane shows the `relay trust` command
 to run in a terminal and does nothing else. Against an agent without relay
 the pane lists the displays and requests acp-tui saw itself, and offers no
 trust.
+
+## The board
+
+relay keeps cards: small structured things you work through over days,
+such as a checklist or a tracker of accounts by month. Roles make them.
+Press b in the focused pane to see them.
+The first time, acp-tui asks relay for the board with `_relay/cards`.
+After that relay sends `_relay/cards/changed` whenever a card changes,
+here, in a terminal or by a role, and the board redraws from what relay
+sent. An archived card leaves the board. Against
+an agent without relay the board says "This agent has no board."
+
+The list shows each card's title, kind, progress and labels. Enter opens
+a card. A checklist shows its items with `[x]` or `[ ]`. A tracker shows
+its columns, then one row per line, with `x` for done, `-` for skipped
+and `·` for open. A note shows its text. A card of a kind acp-tui does not
+know shows the text form relay sends with every card.
+
+Keys on the board:
+
+- Up and down, or k and j, select a card, or, in an open card, its title
+  and then each item or row. Left and right, or h and l, select a
+  tracker's column.
+- x or space ticks or unticks the selected item. On a tracker it moves
+  the selected cell from open to done to skipped and back to open.
+- a adds an item to a checklist or a row to a tracker; A adds a column.
+- e edits the selected line's text: the title, an item or a row's name.
+  E renames the selected column. A note's text cannot be edited here.
+- X archives the selected card, after you confirm with y. relay's CLI can
+  restore it.
+- r asks relay for the board again; b goes back to the workspace items.
+
+Adding and editing use a one-line input at the foot of the pane: Enter
+sends, Esc cancels. An edit starts from the current text, unless that text
+came from outside. What you send counts as your own text, so acp-tui
+does not offer outside words for you to send back unchanged. Every edit carries the
+revision you were looking at when you opened it, so relay refuses it if
+someone changed that text in the meantime. A paste into the input goes
+nowhere, as anywhere else in the pane.
+
+acp-tui never changes a card itself. Each key sends relay an op with
+`_relay/cards/op` and waits for the card relay sends back. Until then the
+card is marked `sending…` and the next op waits. When relay refuses an op,
+the pane shows "Refused." with relay's reason.
+
+Card text is shown as relay sent it. relay has already made hidden
+characters visible and defanged links in text from outside, which it
+marks as such, and acp-tui puts that text under the `untrusted` mark.
+Links are never clickable, and acp-tui fetches nothing.
 
 ## Pasting marks the conversation untrusted
 
@@ -179,10 +229,12 @@ random sessions. `internal/wire` turns ACP messages into those events, and
 `internal/render` turns the state into terminal lines. The renderer uses
 bold, italic and faint, and no colours.
 
-The pane follows the same split. `core` holds its state and the trust
-rules, `wire` reads relay's `_meta` and its `_relay/items`, `_relay/resolve`
-and `_relay/trust` answers, and `render` draws it. The `agent` package
-makes the three calls, one at a time and in order.
+The pane follows the same split. `core` holds its state, the trust
+rules and the board's cards, `wire` reads relay's `_meta`, its
+`_relay/items`, `_relay/resolve`, `_relay/trust`, `_relay/cards` and
+`_relay/cards/op` answers and its `_relay/cards/changed` notifications,
+and `render` draws it all. The `agent` package makes the calls one at a
+time and in order.
 
 `internal/agent` runs the agent process, and `internal/ui` is the Bubble
 Tea program. Both are thin code around the core that carries out its
