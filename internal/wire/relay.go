@@ -2,13 +2,16 @@ package wire
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
 	acp "github.com/caelis-labs/acp-go-sdk"
 
 	"github.com/kirahowe/acp-tui/internal/core"
+	"github.com/kirahowe/acp-tui/internal/strictjson"
 )
 
 // What relay adds to ACP, in _meta and in extension methods. See relay's
@@ -47,13 +50,13 @@ func Displays(content []acp.ToolCallContent) []core.Display {
 			continue
 		}
 		var m struct {
-			Title   string `json:"title"`
-			Body    string `json:"body"`
-			Labels  []string
-			Sources []struct{ Title, Ref string }
-			Ref     string `json:"ref"`
+			Title   string      `json:"title"`
+			Body    string      `json:"body"`
+			Labels  []string    `json:"labels"`
+			Sources []rawSource `json:"sources"`
+			Ref     string      `json:"ref"`
 		}
-		if err := json.Unmarshal(raw, &m); err != nil {
+		if err := strictjson.Unmarshal(raw, &m); err != nil {
 			out = append(out, core.Display{Title: "(unreadable display)", Body: t.Text,
 				Labels: core.Labels{Private: true, Contaminated: true}})
 			continue
@@ -97,7 +100,7 @@ func PreviewLabels(content []acp.ToolCallContent) core.Labels {
 			continue
 		}
 		var names []string
-		if json.Unmarshal(t.Meta[previewLabelsKey], &names) == nil {
+		if strictjson.Unmarshal(t.Meta[previewLabelsKey], &names) == nil {
 			l = l.Union(labelNames(names))
 		}
 	}
@@ -139,14 +142,17 @@ func errText(err error) string {
 	var data struct {
 		Message string `json:"message"`
 	}
-	if b, e := json.Marshal(re.Data); e == nil && json.Unmarshal(b, &data) == nil &&
+	if b, e := json.Marshal(re.Data); e == nil && strictjson.Unmarshal(b, &data) == nil &&
 		data.Message != "" && !strings.Contains(msg, data.Message) {
 		msg += ": " + data.Message
 	}
 	return msg
 }
 
-type rawSource struct{ Title, Ref string }
+type rawSource struct {
+	Title string `json:"title"`
+	Ref   string `json:"ref"`
+}
 
 type rawItem struct {
 	Kind         string          `json:"kind"`
@@ -178,7 +184,7 @@ func Items(raw json.RawMessage, err error, at time.Time) core.ItemsLoaded {
 	var r struct {
 		Items []rawItem `json:"items"`
 	}
-	if json.Unmarshal(raw, &r) != nil {
+	if strictjson.Unmarshal(raw, &r) != nil {
 		return core.ItemsLoaded{At: at, Failed: true}
 	}
 	e := core.ItemsLoaded{At: at}
@@ -186,10 +192,10 @@ func Items(raw json.RawMessage, err error, at time.Time) core.ItemsLoaded {
 		out := core.Item{Ref: it.Ref, Path: it.Path, CallID: it.CallID, At: it.At, Title: it.Title, Text: it.Text,
 			Labels: labelNames(it.Labels), SHA256: it.SHA256, CanTrust: it.CanTrust, TrustCommand: it.TrustCommand,
 			Tool: it.Tool, Status: it.Status}
-		var n json.Number
-		if json.Unmarshal(it.Version, &n) == nil {
-			if _, err := n.Int64(); err == nil {
-				out.Version = n.String()
+		// The version stays the literal relay listed, to send back exactly.
+		if v := jsontext.Value(it.Version); v.Kind() == '0' {
+			if _, err := strconv.ParseInt(string(v), 10, 64); err == nil {
+				out.Version = string(v)
 			}
 		}
 		for _, src := range it.Sources {
@@ -231,7 +237,7 @@ func Resolution(ref string, raw json.RawMessage, err error, at time.Time) core.C
 		Target string   `json:"target"`
 		Labels []string `json:"labels"`
 	}
-	if json.Unmarshal(raw, &r) != nil || r.Kind == nil {
+	if strictjson.Unmarshal(raw, &r) != nil || r.Kind == nil {
 		return failed
 	}
 	switch r.Status {
@@ -252,7 +258,7 @@ func TrustOutcome(path string, raw json.RawMessage, err error, at time.Time) cor
 		Trusted bool     `json:"trusted"`
 		Labels  []string `json:"labels"`
 	}
-	if json.Unmarshal(raw, &r) != nil || !r.Trusted {
+	if strictjson.Unmarshal(raw, &r) != nil || !r.Trusted {
 		return core.TrustDone{At: at, Path: path, Err: "relay did not say it trusted the item"}
 	}
 	return core.TrustDone{At: at, Path: path, Labels: labelNames(r.Labels)}
@@ -353,7 +359,7 @@ func elems(raw []rawText) ([]core.CardElem, bool) {
 // kind this client does not know keeps its text form.
 func card(raw json.RawMessage) (core.Card, bool) {
 	var r rawCard
-	if json.Unmarshal(raw, &r) != nil || r.ID == nil {
+	if strictjson.Unmarshal(raw, &r) != nil || r.ID == nil {
 		return core.Card{}, false
 	}
 	c := core.Card{ID: *r.ID, Kind: r.Kind, Status: r.Status, Complete: r.Complete, Rev: r.Rev, Owner: r.Owner,
@@ -420,7 +426,7 @@ func Cards(raw json.RawMessage, err error, at time.Time) core.CardsLoaded {
 		Rev   int64             `json:"rev"`
 		Cards []json.RawMessage `json:"cards"`
 	}
-	if json.Unmarshal(raw, &r) != nil || r.Cards == nil {
+	if strictjson.Unmarshal(raw, &r) != nil || r.Cards == nil {
 		return core.CardsLoaded{At: at, Err: "relay's answer could not be read"}
 	}
 	return core.CardsLoaded{At: at, Rev: r.Rev, Cards: cardList(r.Cards)}
@@ -437,7 +443,7 @@ func CardOpOutcome(id int64, raw json.RawMessage, err error, at time.Time) core.
 		Card    json.RawMessage `json:"card"`
 		Changed *bool           `json:"changed"`
 	}
-	if json.Unmarshal(raw, &r) != nil || r.Card == nil {
+	if strictjson.Unmarshal(raw, &r) != nil || r.Card == nil {
 		return core.CardOpDone{At: at, CardID: id, Err: "relay's answer could not be read"}
 	}
 	c, ok := card(r.Card)
@@ -455,7 +461,7 @@ func CardsChanged(params json.RawMessage, at time.Time) (core.CardsChanged, bool
 		Rev   int64             `json:"rev"`
 		Cards []json.RawMessage `json:"cards"`
 	}
-	if json.Unmarshal(params, &r) != nil {
+	if strictjson.Unmarshal(params, &r) != nil {
 		return core.CardsChanged{}, false
 	}
 	return core.CardsChanged{At: at, Rev: r.Rev, Cards: cardList(r.Cards)}, true

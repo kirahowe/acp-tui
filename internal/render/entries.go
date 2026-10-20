@@ -1,7 +1,8 @@
 package render
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kirahowe/acp-tui/internal/core"
+	"github.com/kirahowe/acp-tui/internal/strictjson"
 )
 
 // Entries renders transcript entries. prev is the entry just before es,
@@ -234,26 +236,27 @@ func args(input string) []string {
 	if strings.TrimSpace(input) == "" {
 		return nil
 	}
-	var obj map[string]json.RawMessage
-	if json.Unmarshal([]byte(input), &obj) != nil {
+	if strictjson.Message([]byte(input)) != nil {
 		return []string{oneLine(input)}
 	}
 	var out []string
-	dec := json.NewDecoder(strings.NewReader(input))
-	dec.Token() // {
-	for dec.More() {
-		tok, err := dec.Token()
+	dec := jsontext.NewDecoder(strings.NewReader(input))
+	if _, err := dec.ReadToken(); err != nil { // {
+		return []string{oneLine(input)}
+	}
+	for dec.PeekKind() == '"' {
+		tok, err := dec.ReadToken()
 		if err != nil {
 			break
 		}
-		key, _ := tok.(string)
-		var v json.RawMessage
-		if dec.Decode(&v) != nil {
+		key := tok.String()
+		v, err := dec.ReadValue()
+		if err != nil {
 			break
 		}
 		val := string(v)
 		var str string
-		if json.Unmarshal(v, &str) == nil {
+		if v.Kind() == '"' && json.Unmarshal(v, &str) == nil {
 			val = str
 		}
 		out = append(out, oneLine(key)+": "+oneLine(val))

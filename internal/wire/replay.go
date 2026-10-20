@@ -3,13 +3,14 @@ package wire
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"time"
 
 	acp "github.com/caelis-labs/acp-go-sdk"
 
 	"github.com/kirahowe/acp-tui/internal/core"
+	"github.com/kirahowe/acp-tui/internal/strictjson"
 )
 
 // Replay decodes a recorded stream, one JSON object per line: session
@@ -32,14 +33,18 @@ func Replay(jsonl []byte, at time.Time) ([]core.Event, error) {
 }
 
 func replayLine(b []byte, at time.Time) ([]core.Event, error) {
-	var keys map[string]json.RawMessage
-	if err := json.Unmarshal(b, &keys); err != nil {
+	// A recording is what another process wrote: read it as the stream is.
+	if err := strictjson.Message(b); err != nil {
+		return nil, err
+	}
+	var keys map[string]jsontext.Value
+	if err := strictjson.Unmarshal(b, &keys); err != nil {
 		return nil, err
 	}
 	switch {
 	case keys["sessionUpdate"] != nil:
 		var u acp.SessionUpdate
-		if err := u.UnmarshalJSON(b); err != nil {
+		if _, err := strictjson.ForV1(b, &u); err != nil {
 			return nil, err
 		}
 		n := acp.SessionNotification{SessionId: "replay", Update: u}
@@ -49,13 +54,13 @@ func replayLine(b []byte, at time.Time) ([]core.Event, error) {
 		return []core.Event{Update(n, at)}, nil
 	case keys["stopReason"] != nil:
 		var r acp.PromptResponse
-		if err := json.Unmarshal(b, &r); err != nil {
+		if _, err := strictjson.ForV1(b, &r); err != nil {
 			return nil, err
 		}
 		return []core.Event{Response(r, nil, at)}, nil
 	case keys["error"] != nil:
 		var re acp.RequestError
-		if err := json.Unmarshal(keys["error"], &re); err != nil {
+		if _, err := strictjson.ForV1(keys["error"], &re); err != nil {
 			return nil, err
 		}
 		return []core.Event{Response(acp.PromptResponse{}, &re, at)}, nil

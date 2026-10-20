@@ -13,6 +13,7 @@ import (
 	acp "github.com/caelis-labs/acp-go-sdk"
 
 	"github.com/kirahowe/acp-tui/internal/core"
+	"github.com/kirahowe/acp-tui/internal/strictjson"
 )
 
 // Capabilities is what acp-tui tells the agent it supports: notices, and
@@ -149,7 +150,7 @@ func Response(r acp.PromptResponse, err error, at time.Time) core.Event {
 	var data struct {
 		Message string `json:"message"`
 	}
-	if b, err := json.Marshal(re.Data); err == nil && json.Unmarshal(b, &data) == nil &&
+	if b, err := json.Marshal(re.Data); err == nil && strictjson.Unmarshal(b, &data) == nil &&
 		data.Message != "" && !strings.Contains(msg, data.Message) {
 		msg += ": " + data.Message
 	}
@@ -226,7 +227,7 @@ func PermissionLabels(req acp.RequestPermissionRequest, at time.Time) (core.Labe
 // _meta["agentloop/fixed_args"], sorted.
 func fixedArgs(meta map[string]json.RawMessage) []string {
 	var m map[string]json.RawMessage
-	if json.Unmarshal(meta[fixedArgsKey], &m) != nil || len(m) == 0 {
+	if strictjson.Unmarshal(meta[fixedArgsKey], &m) != nil || len(m) == 0 {
 		return nil
 	}
 	return slices.Sorted(maps.Keys(m))
@@ -238,7 +239,7 @@ const fixedArgsKey = "agentloop/fixed_args"
 // labelsOf reads agentloop's labels from a _meta map.
 func labelsOf(meta map[string]json.RawMessage) (core.Labels, bool) {
 	var names []string
-	if json.Unmarshal(meta[labelsKey], &names) != nil {
+	if strictjson.Unmarshal(meta[labelsKey], &names) != nil {
 		return core.Labels{}, false
 	}
 	return labelNames(names), true
@@ -335,7 +336,7 @@ func retryAt(meta map[string]json.RawMessage) *time.Time {
 	var retry struct {
 		RetryAt string `json:"retry_at"`
 	}
-	if json.Unmarshal(meta["agentloop/retry"], &retry) != nil {
+	if strictjson.Unmarshal(meta["agentloop/retry"], &retry) != nil {
 		return nil
 	}
 	at, err := time.Parse(time.RFC3339, retry.RetryAt)
