@@ -25,6 +25,10 @@ type Conn interface {
 	Items()
 	Resolve(ref string)
 	Trust(path, version, sha string)
+	// Cards and CardOp call relay's board methods; their answers, and
+	// relay's notifications of changed cards, come back as events.
+	Cards()
+	CardOp(card int64, op core.CardOp)
 	Shutdown()
 }
 
@@ -289,6 +293,13 @@ func (m *Model) paneKey(k tea.KeyPressMsg, empty bool, now time.Time) core.Event
 		}
 		return nil
 	}
+	if b := m.core.Pane.Board; b.Open {
+		if b.Input != nil {
+			a, text := ClassifyBoardInput(k)
+			return core.PaneKey{At: now, Action: a, Text: text}
+		}
+		return core.PaneKey{At: now, Action: ClassifyBoard(k)}
+	}
 	a := ClassifyPane(k)
 	e := core.PaneKey{At: now, Action: a}
 	if m.core.Pane.Detail {
@@ -337,6 +348,10 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 		m.conn.Resolve(f.Ref)
 	case core.SendTrust:
 		m.conn.Trust(f.Path, f.Version, f.SHA256)
+	case core.RequestCards:
+		m.conn.Cards()
+	case core.SendCardOp:
+		m.conn.CardOp(f.Card, f.Op)
 	case core.InsertInput:
 		m.input.InsertString(f.Text)
 	case core.RestoreInput:

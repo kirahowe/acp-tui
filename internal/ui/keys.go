@@ -186,6 +186,72 @@ func ClassifyPane(k tea.KeyPressMsg) core.PaneAction {
 		return core.PaneTrust
 	case "y", "Y":
 		return core.PaneYes
+	case "b":
+		return core.PaneBoard
 	}
 	return core.PaneOther
+}
+
+// ClassifyBoard decides what a key press does while the pane shows the
+// board. Every key is swallowed. It is pure.
+func ClassifyBoard(k tea.KeyPressMsg) core.PaneAction {
+	switch k.String() {
+	case "up", "k", "shift+tab":
+		return core.PaneUp
+	case "down", "j", "tab":
+		return core.PaneDown
+	case "left", "h":
+		return core.PaneLeft
+	case "right", "l":
+		return core.PaneRight
+	case "pgup":
+		return core.PagePrev
+	case "pgdown":
+		return core.PageNext
+	case "enter":
+		return core.PaneEnter
+	case "esc":
+		return core.PaneEsc
+	case "ctrl+x":
+		return core.PaneToggle
+	case "b":
+		return core.PaneBoard
+	case "r":
+		return core.PaneRefresh
+	case "space", "x":
+		return core.PaneMark
+	case "a":
+		return core.PaneAdd
+	case "A":
+		return core.PaneAddColumn
+	case "e":
+		return core.PaneEdit
+	case "E":
+		return core.PaneEditColumn
+	case "X":
+		return core.PaneArchive
+	case "y", "Y":
+		return core.PaneYes
+	}
+	return core.PaneOther
+}
+
+// ClassifyBoardInput decides what a key press does while the board's
+// one-line input is open: enter sends, esc cancels, backspace deletes,
+// and a key that types text types it. It is pure.
+func ClassifyBoardInput(k tea.KeyPressMsg) (core.PaneAction, string) {
+	switch k.String() {
+	case "enter":
+		return core.PaneEnter, ""
+	case "esc":
+		return core.PaneEsc, ""
+	case "backspace", "ctrl+h":
+		return core.PaneBackspace, ""
+	case "ctrl+x":
+		return core.PaneToggle, ""
+	}
+	if k.Text != "" && k.Mod&^tea.ModShift == 0 {
+		return core.PaneChar, k.Text
+	}
+	return core.PaneOther, ""
 }

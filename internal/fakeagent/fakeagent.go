@@ -36,7 +36,19 @@
 //	                                marks the answer that takes over once
 //	                                a _relay/trust has succeeded. Each call
 //	                                is logged as "extension <method>
-//	                                <params>".
+//	                                <params>". Several lines for
+//	                                _relay/cards or _relay/cards/op also
+//	                                answer in turn, the last one from then
+//	                                on; "card": n limits a line to calls
+//	                                about card n, which count apart.
+//	                                "notify": {"method": ...,
+//	                                "params": ...} on a line sends that
+//	                                notification just before the answer,
+//	                                as relay announces a changed card.
+//
+//	{"notify": {"method": "_relay/cards/changed", "params": {...}}}
+//	                                send an extension notification, such
+//	                                as a card another process changed
 //
 // So an agentloop fixture is a script as it stands. After a cancel the
 // prompt answers "cancelled" at once, and the script carries on after
@@ -68,7 +80,14 @@ type step struct {
 	Title         string            `json:"title"`
 	Description   string            `json:"description"`
 	Extension     *extension        `json:"extension"`
+	Notify        *notification     `json:"notify"`
 	raw           json.RawMessage
+}
+
+// notification is an extension notification to send the client.
+type notification struct {
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params"`
 }
 
 // extension is a canned answer to an extension method.
@@ -78,6 +97,8 @@ type extension struct {
 	AfterTrust bool              `json:"after_trust"`
 	Result     json.RawMessage   `json:"result"`
 	Error      *acp.RequestError `json:"error"`
+	Notify     *notification     `json:"notify"`
+	Card       *int64            `json:"card"`
 }
 
 // Info is what the agent says about itself: Title goes in agentInfo,
@@ -98,8 +119,9 @@ type Agent struct {
 	pos       int
 	cancelled chan struct{}
 	ext       []extension
-	itemsCall int  // how many _relay/items calls have been answered
-	trusted   bool // a _relay/trust has succeeded
+	itemsCall int            // how many _relay/items calls have been answered
+	calls     map[string]int // how many calls of other in-turn methods have been answered
+	trusted   bool           // a _relay/trust has succeeded
 }
 
 // New parses a script. log receives one line per prompt and cancel.
@@ -216,6 +238,10 @@ func (a *Agent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptRe
 			if err := a.sendRetry(ctx, req.SessionId, s); err != nil {
 				return acp.PromptResponse{}, err
 			}
+		case s.Notify != nil:
+			if err := a.notify(ctx, *s.Notify); err != nil {
+				return acp.PromptResponse{}, err
+			}
 		case s.StopReason != nil:
 			return acp.PromptResponse{StopReason: acp.StopReason(*s.StopReason)}, nil
 		case s.Error != nil:
@@ -326,6 +352,14 @@ func (a *Agent) sendRetry(ctx context.Context, session acp.SessionId, s step) er
 	return a.send(ctx, session, update)
 }
 
+// notify sends an extension notification to the client.
+func (a *Agent) notify(ctx context.Context, n notification) error {
+	a.mu.Lock()
+	conn := a.conn
+	a.mu.Unlock()
+	return conn.NotifyExtension(ctx, n.Method, n.Params)
+}
+
 // Serve runs a over the connection until the peer goes away.
 func Serve(ctx context.Context, a *Agent, conn *acp.AgentSideConnection) error {
 	a.mu.Lock()
@@ -340,8 +374,25 @@ func Serve(ctx context.Context, a *Agent, conn *acp.AgentSideConnection) error {
 
 // HandleExtensionMethod answers relay's extension methods from the
 // script's canned answers, and logs the call.
-func (a *Agent) HandleExtensionMethod(_ context.Context, method string, params json.RawMessage) (any, error) {
+func (a *Agent) HandleExtensionMethod(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	a.logf("extension %s %s", method, params)
+	want := a.answer(method, params)
+	if want == nil {
+		return nil, acp.NewMethodNotFound(method)
+	}
+	if want.Notify != nil {
+		if err := a.notify(ctx, *want.Notify); err != nil {
+			return nil, err
+		}
+	}
+	if want.Error != nil {
+		return nil, want.Error
+	}
+	return want.Result, nil
+}
+
+// answer picks the canned answer to a call, or nil.
+func (a *Agent) answer(method string, params json.RawMessage) *extension {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	var want *extension
@@ -376,6 +427,28 @@ func (a *Agent) HandleExtensionMethod(_ context.Context, method string, params j
 				break
 			}
 		}
+	case "_relay/cards", "_relay/cards/op":
+		var p struct {
+			Card *int64 `json:"card"`
+		}
+		_ = json.Unmarshal(params, &p)
+		var list []extension
+		for _, e := range a.ext {
+			if e.Method == method && (e.Card == nil || (p.Card != nil && *e.Card == *p.Card)) {
+				list = append(list, e)
+			}
+		}
+		if len(list) > 0 {
+			if a.calls == nil {
+				a.calls = map[string]int{}
+			}
+			k := method
+			if p.Card != nil {
+				k += fmt.Sprint(" ", *p.Card)
+			}
+			want = &list[min(a.calls[k], len(list)-1)]
+			a.calls[k]++
+		}
 	default:
 		for i, e := range a.ext {
 			if e.Method == method {
@@ -384,14 +457,8 @@ func (a *Agent) HandleExtensionMethod(_ context.Context, method string, params j
 			}
 		}
 	}
-	if want == nil {
-		return nil, acp.NewMethodNotFound(method)
-	}
-	if want.Error != nil {
-		return nil, want.Error
-	}
-	if method == "_relay/trust" {
+	if want != nil && want.Error == nil && method == "_relay/trust" {
 		a.trusted = true
 	}
-	return want.Result, nil
+	return want
 }

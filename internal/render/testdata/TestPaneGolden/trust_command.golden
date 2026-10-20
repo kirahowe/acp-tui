@@ -17,8 +17,8 @@
 ␛[0;2m  shown · private · trusted␛[m
 ␛[0;2m  1 Main Street␛[m
 
-␛[0;2mcited in the latest reply (4)␛[m
-␛[0;2m↓ 5 below␛[m
+␛[0;2m↓ 6 below␛[m
   ␛[0;1mrelay trust doc shown/2026-10-18/t1.md␛[m
 ␛[0;1mTrust needs a terminal. Run this there:␛[m
-␛[0;2m↑↓ select · enter open · t trust · esc back␛[m
+␛[0;2m↑↓ select · enter open · t trust · b board ·␛[m
+␛[0;2mesc back␛[m

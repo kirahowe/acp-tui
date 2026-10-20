@@ -16,9 +16,9 @@
   Hall address
 ␛[0;2m  shown · private · trusted␛[m
 ␛[0;2m  1 Main Street␛[m
-
-␛[0;2m↓ 6 below␛[m
+␛[0;2m↓ 7 below␛[m
   ␛[0;1mrelay trust doc shown/2026-10-18/t1.md␛[m
   the doc changed since it was listed
 ␛[0;1mTrust failed.␛[m
-␛[0;2m↑↓ select · enter open · t trust · esc back␛[m
+␛[0;2m↑↓ select · enter open · t trust · b board ·␛[m
+␛[0;2mesc back␛[m

@@ -15,7 +15,7 @@
 ␛[0;2m  shown · private · trusted␛[m
 ␛[0;2m  1 Main Street␛[m
 ␛[0;2m↓ 7 below␛[m
-␛[0;2m↑↓ select · enter open · t trust · esc back␛[m
+␛[0;2m↑↓ select · enter open · t trust · b board · esc back␛[m
 
 ␛[0;2m╭──────────────────────────────────────────────────────────╮␛[m
 ␛[0;2m│␛[m › ␛[0;2m                                                      ␛[m ␛[0;2m│␛[m

@@ -354,6 +354,9 @@ type parts struct {
 
 func paneParts(s core.State, now time.Time, width int) parts {
 	p := s.Pane
+	if p.Board.Open {
+		return boardParts(s, width)
+	}
 	items := core.PaneItems(s)
 	var pr parts
 	title := styled(bold, "workspace") + styled(faint, fmt.Sprintf(" (%d)", len(items)))
@@ -406,7 +409,7 @@ func paneParts(s core.State, now time.Time, width int) parts {
 			}
 		}
 		if p.Focus {
-			pr.foot = hint("↑↓ select · enter open · t trust · esc back")
+			pr.foot = hint("↑↓ select · enter open · t trust · b board · esc back")
 		} else {
 			pr.foot = hint(PaneKey + " to focus")
 		}

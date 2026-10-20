@@ -18,6 +18,6 @@ The hall seats 900 [[fact:12]], see [[doc:gone]], [[web:https://x.test/a]] and  
 [[note:later]].                                                                     ␛[m ␛[0;2m│␛[m ␛[0;2m  1 Main Street␛[m
                                                                                     ␛[m ␛[0;2m│␛[m 
 ␛[0;2m╭──────────────────────────────────────────────────────────────────────────────────╮␛[m␛[m ␛[0;2m│␛[m ␛[0;2mcited in the latest reply (4)␛[m
-␛[0;2m│␛[m › ␛[0;2m                                                                              ␛[m ␛[0;2m│␛[m␛[m ␛[0;2m│␛[m   Fact 12 [venues]␛[0;2m · [[fact:12]]␛[m
-␛[0;2m╰──────────────────────────────────────────────────────────────────────────────────╯␛[m␛[m ␛[0;2m│␛[m ␛[0;2m↓ 4 below␛[m
-␛[0;2m  ␛[0;1m[private]␛[0;2m ␛[0;1;7m contaminated ␛[0;2m ready · ctrl+j for a new line · ? keys␛[m                   ␛[m ␛[0;2m│␛[m ␛[0;2m↑↓ select · enter open · t trust · esc back␛[m
+␛[0;2m│␛[m › ␛[0;2m                                                                              ␛[m ␛[0;2m│␛[m␛[m ␛[0;2m│␛[m ␛[0;2m↓ 5 below␛[m
+␛[0;2m╰──────────────────────────────────────────────────────────────────────────────────╯␛[m␛[m ␛[0;2m│␛[m ␛[0;2m↑↓ select · enter open · t trust · b board␛[m
+␛[0;2m  ␛[0;1m[private]␛[0;2m ␛[0;1;7m contaminated ␛[0;2m ready · ctrl+j for a new line · ? keys␛[m                   ␛[m ␛[0;2m│␛[m ␛[0;2m· esc back␛[m

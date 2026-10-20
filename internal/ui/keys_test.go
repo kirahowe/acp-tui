@@ -20,6 +20,8 @@ func (nopConn) Answer(core.AnswerPermission)     {}
 func (nopConn) Items()                           {}
 func (nopConn) Resolve(string)                   {}
 func (nopConn) Trust(string, string, string)     {}
+func (nopConn) Cards()                           {}
+func (nopConn) CardOp(int64, core.CardOp)        {}
 func (nopConn) Shutdown()                        {}
 
 func genKey(t *rapid.T) tea.KeyPressMsg {
@@ -175,4 +177,34 @@ func TestPaneFocusSwallowsKeys(t *testing.T) {
 			}
 		}
 	})
+}
+
+// While the board's input is open, enter and esc never type, a typed key
+// types its text, and a modified key types nothing.
+func TestBoardInputKeys(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		k := genKey(t)
+		a, text := ClassifyBoardInput(k)
+		switch k.String() {
+		case "enter":
+			if a != core.PaneEnter {
+				t.Fatalf("enter gave %v", a)
+			}
+		case "esc":
+			if a != core.PaneEsc {
+				t.Fatalf("esc gave %v", a)
+			}
+		}
+		if a == core.PaneChar && (text == "" || k.Mod&^tea.ModShift != 0) {
+			t.Fatalf("key %q typed %q", k.String(), text)
+		}
+	})
+	for _, k := range []tea.KeyPressMsg{{Code: 'x', Text: "x"}, {Code: 'X', Text: "X", Mod: tea.ModShift}, {Code: ' ', Text: " "}} {
+		if a, text := ClassifyBoardInput(k); a != core.PaneChar || text != k.Text {
+			t.Errorf("%q gave %v %q", k.String(), a, text)
+		}
+	}
+	if ClassifyBoard(tea.KeyPressMsg{Code: 'x', Text: "x"}) != core.PaneMark || ClassifyPane(tea.KeyPressMsg{Code: 'b', Text: "b"}) != core.PaneBoard {
+		t.Error("board keys")
+	}
 }
