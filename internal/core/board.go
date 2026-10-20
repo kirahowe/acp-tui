@@ -279,8 +279,88 @@ func (r *reducer) keepBoardSelection() {
 	}
 }
 
+// boardAnchor is what an open card's cursor is on, by id: the card, the
+// item or row (0 for the title) and the tracker column (0 for none),
+// with the positions they were at.
+type boardAnchor struct {
+	card         int64
+	line, col    int
+	elem, column int
+}
+
+// anchorOf is where the open card's cursor is, or false when no card is
+// open.
+func anchorOf(b Board) (boardAnchor, bool) {
+	c, i := BoardCard(b)
+	if !b.Detail || i < 0 {
+		return boardAnchor{}, false
+	}
+	a := boardAnchor{card: c.ID, line: BoardLine(b, c), col: BoardCol(b, c)}
+	if elems := c.lineElems(); a.line > 0 {
+		a.elem = elems[a.line-1].ID
+	}
+	if a.col >= 0 {
+		a.column = c.Columns[a.col].ID
+	}
+	return a, true
+}
+
+// lineElems are the elements behind a card's lines after the title.
+func (c Card) lineElems() []CardElem {
+	switch c.Kind {
+	case CardChecklist:
+		return c.Items
+	case CardTracker:
+		return c.Rows
+	}
+	return nil
+}
+
+// reanchor puts the open card's cursor back on the element it was on
+// before relay's newer copy of the card replaced the held one, since an
+// item or row added or removed above it moves it. When that element has
+// gone, the cursor stays at the nearest position, and a note says so
+// (over any older note, but not over a refusal and its reason), so that
+// x never acts on a line the operator did not choose without them being
+// told.
+func (r *reducer) reanchor(a boardAnchor, was bool) {
+	b := &r.s.Pane.Board
+	c, i := BoardCard(*b)
+	if !was || !b.Detail || i < 0 || c.ID != a.card {
+		return
+	}
+	gone := ""
+	if a.elem != 0 {
+		elems := c.lineElems()
+		if j := slices.IndexFunc(elems, func(x CardElem) bool { return x.ID == a.elem }); j >= 0 {
+			b.Line = j + 1
+		} else {
+			b.Line = min(a.line, c.Lines()-1)
+			gone = "item"
+			if c.Kind == CardTracker {
+				gone = "row"
+			}
+		}
+	}
+	if a.column != 0 {
+		if j := slices.IndexFunc(c.Columns, func(x CardElem) bool { return x.ID == a.column }); j >= 0 {
+			b.Col = j
+		} else {
+			b.Col = max(min(a.col, len(c.Columns)-1), 0)
+			if gone == "" {
+				gone = "column"
+			}
+		}
+	}
+	if gone != "" && b.Failure == "" {
+		b.Message = "The selected " + gone + " is gone; the cursor moved to the nearest one."
+	}
+}
+
 func (r *reducer) board(e Event) {
 	b := &r.s.Pane.Board
+	anchor, anchored := anchorOf(*b)
+	defer func() { r.reanchor(anchor, anchored) }()
 	switch e := e.(type) {
 	case CardsLoaded:
 		switch {
@@ -330,11 +410,15 @@ func (r *reducer) board(e Event) {
 			b.Message = ""
 		}
 		if e.Err != "" {
-			b.Message, b.Failure = "Refused.", e.Err
+			b.Message, b.Failure = refusedNotice, e.Err
 			if sent != nil && sent.Card == e.CardID {
 				r.reopen(*sent)
 			}
 			return
+		}
+		if b.Message == refusedNotice {
+			// relay took the op; the refusal before it no longer holds.
+			b.Message, b.Failure = "", ""
 		}
 		if e.Card != nil {
 			b.put(*e.Card)
@@ -464,11 +548,15 @@ func (r *reducer) boardKey(e PaneKey) {
 			r.mark(c)
 		}
 	case PaneAdd, PaneAddColumn:
-		if i >= 0 {
+		// Adding works in an open card only, where the operator sees what
+		// they add to.
+		if i >= 0 && b.Detail {
 			r.startAdd(c, e.Action == PaneAddColumn)
 		}
 	case PaneEdit, PaneEditColumn:
-		if i >= 0 {
+		// From the list only the title shows, so only e (retitle) works
+		// there; E renames a column the operator can see in an open card.
+		if i >= 0 && (b.Detail || e.Action == PaneEdit) {
 			r.startEdit(c, e.Action == PaneEditColumn)
 		}
 	case PaneArchive:
@@ -478,6 +566,10 @@ func (r *reducer) boardKey(e PaneKey) {
 		}
 	}
 }
+
+// refusedNotice heads relay's refusal of an op. It goes when relay takes
+// the next op, or when the operator closes the input it reopened.
+const refusedNotice = "Refused."
 
 // busyNotice is what a key that came while an op was on its way says.
 // It goes when the op is done.
@@ -611,6 +703,9 @@ func (r *reducer) inputKey(e PaneKey, in *BoardInput) {
 		b.Input = &BoardInput{Card: in.Card, Op: in.Op, Prompt: in.Prompt, Text: string(rs), Was: in.Was}
 	case PaneEsc:
 		b.Input = nil
+		if b.Message == refusedNotice {
+			b.Message, b.Failure = "", ""
+		}
 	case PaneEnter:
 		if in.Was != "" && in.Text == in.Was {
 			b.Input = nil

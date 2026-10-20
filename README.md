@@ -160,12 +160,16 @@ Keys on the board:
 
 - Up and down, or k and j, select a card, or, in an open card, its title
   and then each item or row. Left and right, or h and l, select a
-  tracker's column.
+  tracker's column. When a change arrives, the cursor stays on the item,
+  row or column it was on. If that one is gone, the cursor stays where it
+  was and a note says so.
 - x or space ticks or unticks the selected item. On a tracker it moves
   the selected cell from open to done to skipped and back to open.
-- a adds an item to a checklist or a row to a tracker; A adds a column.
+- In an open card, a adds an item to a checklist or a row to a tracker,
+  and A adds a column.
 - e edits the selected line's text: the title, an item or a row's name.
-  E renames the selected column. A note's text cannot be edited here.
+  In the list it retitles the selected card. In an open tracker, E
+  renames the selected column. A note's text cannot be edited here.
 - X archives the selected card, after you confirm with y. relay's CLI can
   restore it.
 - r asks relay for the board again; b goes back to the workspace items. An agent with
@@ -183,8 +187,8 @@ acp-tui never changes a card itself. Each key sends relay an op with
 `_relay/cards/op` and waits for the card relay sends back. Until then the
 card is marked `sending…`, and a key for another op is dropped with a
 note saying so. When relay refuses an op, the pane shows "Refused." with
-relay's reason. If the op carried text, the input opens again with what
-you typed. After a refused edit it carries the card's current revision,
+relay's reason, until relay takes your next op or you close the input.
+If the op carried text, the input opens again with what you typed. After a refused edit it carries the card's current revision,
 so Enter sends your text over the newer change; Esc drops it. Leaving
 the pane with ctrl+x keeps an open input as it was.
 

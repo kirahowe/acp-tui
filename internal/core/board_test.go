@@ -489,3 +489,105 @@ func TestCtrlXKeepsTheTypedText(t *testing.T) {
 		t.Fatalf("input %+v", in)
 	}
 }
+
+// A notification that adds or removes an item above the cursor keeps the
+// cursor on the item the operator chose, so x ticks that item.
+func TestSelectionFollowsTheElementAcrossReplacements(t *testing.T) {
+	s := onBoard(checklist(10, 10, false, false, false))
+	s, _ = boardKeys(s, PaneEnter, PaneDown, PaneDown) // item 2
+	fewer := checklist(10, 11, false, false, false)
+	fewer.Items = fewer.Items[1:] // item 1 removed elsewhere
+	s, _ = Reduce(s, CardsChanged{At: t0, Rev: 11, Cards: []Card{fewer}})
+	_, fx := boardKeys(s, PaneMark)
+	if ops := effectsOf[SendCardOp](fx); len(ops) != 1 || *ops[0].Op.Item != 2 {
+		t.Fatalf("after a removal above: ops %+v", ops)
+	}
+	if s.Pane.Board.Message != "" {
+		t.Fatalf("message %q when nothing moved under the cursor", s.Pane.Board.Message)
+	}
+	more := checklist(10, 12, false, false, false)
+	more.Items = append([]CardElem{{ID: 9, CardText: txt("new", 12)}}, more.Items[1:]...)
+	s, _ = Reduce(s, CardsChanged{At: t0, Rev: 12, Cards: []Card{more}})
+	_, fx = boardKeys(s, PaneMark)
+	if ops := effectsOf[SendCardOp](fx); len(ops) != 1 || *ops[0].Op.Item != 2 {
+		t.Fatalf("after an insertion above: ops %+v", ops)
+	}
+
+	// The tracker's row and column follow too.
+	s = onBoard(tracker(30, 30))
+	s, _ = boardKeys(s, PaneEnter, PaneDown, PaneDown, PaneRight) // RBC × Jul
+	moved := tracker(30, 31)
+	moved.Rows = []CardElem{moved.Rows[1]}
+	moved.Columns = []CardElem{{ID: 3, CardText: txt("May", 31)}, moved.Columns[0], moved.Columns[1]}
+	s, _ = Reduce(s, CardsChanged{At: t0, Rev: 31, Cards: []Card{moved}})
+	_, fx = boardKeys(s, PaneMark)
+	if ops := effectsOf[SendCardOp](fx); len(ops) != 1 || *ops[0].Op.Row != 2 || *ops[0].Op.Column != 2 {
+		t.Fatalf("tracker ops %+v", ops)
+	}
+}
+
+// When the selected item itself goes, the cursor keeps its place and a
+// note says what happened under it.
+func TestSelectionOnAGoneElementSaysSo(t *testing.T) {
+	s := onBoard(checklist(10, 10, false, false, false))
+	s, _ = boardKeys(s, PaneEnter, PaneDown, PaneDown) // item 2
+	without := checklist(10, 11, false, false, false)
+	without.Items = slices.Delete(without.Items, 1, 2)
+	s, _ = Reduce(s, CardsChanged{At: t0, Rev: 11, Cards: []Card{without}})
+	b := s.Pane.Board
+	if b.Line != 2 || b.Message == "" {
+		t.Fatalf("line %d message %q", b.Line, b.Message)
+	}
+	// The last item going leaves the cursor on the one now last.
+	s, _ = boardKeys(s, PaneDown) // item 3
+	last := checklist(10, 12, false)
+	s, _ = Reduce(s, CardsChanged{At: t0, Rev: 12, Cards: []Card{last}})
+	if b := s.Pane.Board; b.Line != 1 || b.Message == "" {
+		t.Fatalf("line %d message %q", b.Line, b.Message)
+	}
+}
+
+// A refusal stays only until relay takes the next op or the operator
+// closes the input it reopened.
+func TestRefusalGoesOnSuccessOrEsc(t *testing.T) {
+	s := onBoard(checklist(10, 10))
+	s, _ = boardKeys(s, PaneEnter, PaneAdd)
+	s = typeText(s, "yyy")
+	s, _ = boardKeys(s, PaneEnter)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Err: "too long"})
+	s, _ = boardKeys(s, PaneBackspace, PaneEnter)
+	if s.Pane.Board.Message != "Refused." {
+		t.Fatalf("message %q while the resend is on its way", s.Pane.Board.Message)
+	}
+	after := checklist(10, 11, false)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Card: &after})
+	if b := s.Pane.Board; b.Message != "" || b.Failure != "" {
+		t.Fatalf("refusal stayed after success: %q %q", b.Message, b.Failure)
+	}
+
+	s, _ = boardKeys(s, PaneAdd)
+	s = typeText(s, "zzz")
+	s, _ = boardKeys(s, PaneEnter)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Err: "too long"})
+	if s.Pane.Board.Input == nil {
+		t.Fatal("input not reopened")
+	}
+	s, _ = boardKeys(s, PaneEsc)
+	if b := s.Pane.Board; b.Input != nil || b.Message != "" || b.Failure != "" {
+		t.Fatalf("refusal stayed after esc: %+v", b)
+	}
+}
+
+// From the list, a, A and E do nothing: they act on what only an open
+// card shows. e retitles the selected card, as the list's hint says.
+func TestListOffersOnlyRetitle(t *testing.T) {
+	s := onBoard(tracker(30, 30))
+	s, fx := boardKeys(s, PaneAdd, PaneAddColumn, PaneEditColumn)
+	if len(fx) != 0 || s.Pane.Board.Input != nil {
+		t.Fatalf("a list key opened %+v (%v)", s.Pane.Board.Input, fx)
+	}
+	s, _ = boardKeys(s, PaneEdit)
+	if in := s.Pane.Board.Input; in == nil || in.Op.Op != "retitle" {
+		t.Fatalf("input %+v", in)
+	}
+}
