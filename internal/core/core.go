@@ -326,6 +326,7 @@ func Reduce(s State, e Event) (State, []Effect) {
 	s.Pane.Server = append([]Item(nil), s.Pane.Server...)
 	s.Pane.Local = append([]Item(nil), s.Pane.Local...)
 	s.Pane.Cites = append([]Citation(nil), s.Pane.Cites...)
+	s.Pane.Board.Cards = append([]Card(nil), s.Pane.Board.Cards...)
 	r := &reducer{s: s}
 	r.apply(e)
 	return r.s, r.fx
@@ -348,6 +349,7 @@ func (r *reducer) apply(e Event) {
 			s.Agent = e.Agent
 			r.add(banner(s.Title, e))
 			r.refresh()
+			r.askCards()
 			r.sendQueue(e.At)
 		}
 	case Usage:
@@ -366,7 +368,7 @@ func (r *reducer) apply(e Event) {
 		r.pasted(e)
 	case ToggleTrustedPaste:
 		s.TrustNext = !s.TrustNext
-	case ItemsLoaded, CitationResolved, TrustDone, PaneKey:
+	case ItemsLoaded, CitationResolved, TrustDone, PaneKey, CardsLoaded, CardsChanged, CardOpDone:
 		r.pane(e)
 	case PermissionAsked:
 		r.closeTranscript()

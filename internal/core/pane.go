@@ -142,6 +142,8 @@ type Pane struct {
 	Command string
 	// Failure is an error relay gave, shown escaped.
 	Failure string
+	// Board is the board view.
+	Board Board
 }
 
 // PaneItems is the items the pane lists, newest first.
@@ -205,6 +207,7 @@ type (
 		At     time.Time
 		Action PaneAction
 		Max    int
+		Text   string // what PaneChar types
 	}
 )
 
@@ -227,6 +230,19 @@ const (
 	PaneEsc
 	PaneTrust // t
 	PaneYes   // y
+	// The board's keys.
+	PaneBoard      // b: switch between the items and the board
+	PaneRefresh    // r: ask relay for the board again
+	PaneLeft       // the previous tracker column
+	PaneRight      // the next tracker column
+	PaneMark       // tick an item, or move a tracker cell on
+	PaneAdd        // add an item or a row
+	PaneAddColumn  // add a tracker column
+	PaneEdit       // edit the selected line's text
+	PaneEditColumn // rename the selected tracker column
+	PaneArchive    // archive the selected card, once confirmed
+	PaneChar       // typed into the board's input: PaneKey.Text
+	PaneBackspace  // delete the input's last character
 )
 
 // scrollPage is how far a page key scrolls the detail view.
@@ -475,6 +491,8 @@ func (r *reducer) pane(e Event) {
 		r.refresh()
 	case PaneKey:
 		r.paneKey(e)
+	case CardsLoaded, CardsChanged, CardOpDone:
+		r.board(e)
 	}
 }
 
@@ -512,6 +530,7 @@ func (r *reducer) paneKey(e PaneKey) {
 			return
 		}
 		p.Trust, p.Message, p.Failure, p.Command = nil, "", "", ""
+		p.Board.Input, p.Board.Confirm, p.Board.Message, p.Board.Failure = nil, 0, "", ""
 		p.Focus = !p.Focus
 		if p.Focus {
 			r.selectIndex(max(SelectedIndex(*s), 0))
@@ -537,7 +556,15 @@ func (r *reducer) paneKey(e PaneKey) {
 		}
 		return
 	}
+	if p.Board.Open {
+		r.boardKey(e)
+		return
+	}
 	p.Message, p.Failure, p.Command = "", "", ""
+	if e.Action == PaneBoard {
+		r.toggleBoard()
+		return
+	}
 	i := SelectedIndex(*s)
 	switch e.Action {
 	case PaneUp, PaneDown:

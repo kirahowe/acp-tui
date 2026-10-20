@@ -245,3 +245,33 @@ func (a *Agent) Trust(path, version, sha string) {
 		a.emit(wire.TrustOutcome(path, raw, err, time.Now()))
 	})
 }
+
+// Cards asks relay for the board and emits CardsLoaded. It does not
+// block.
+func (a *Agent) Cards() {
+	a.enqueue(func() {
+		raw, err := a.call(wire.MethodCards, wire.CardsParams(a.session))
+		a.emit(wire.Cards(raw, err, time.Now()))
+	})
+}
+
+// CardOp sends relay an op on a card and emits CardOpDone. It does not
+// block.
+func (a *Agent) CardOp(card int64, op core.CardOp) {
+	a.enqueue(func() {
+		raw, err := a.call(wire.MethodCardOp, wire.CardOpParams(a.session, card, op))
+		a.emit(wire.CardOpOutcome(card, raw, err, time.Now()))
+	})
+}
+
+// HandleExtensionMethod takes relay's _relay/cards/changed notification.
+// The client answers no extension request.
+func (c client) HandleExtensionMethod(_ context.Context, method string, params json.RawMessage) (any, error) {
+	if method == wire.MethodCardsChanged {
+		if e, ok := wire.CardsChanged(params, time.Now()); ok {
+			c.a.emit(e)
+		}
+		return nil, nil
+	}
+	return nil, acp.NewMethodNotFound(method)
+}
