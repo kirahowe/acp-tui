@@ -50,7 +50,8 @@ the session's labels lead its footer as they lead the status line.
 
 The agent's stderr would garble the screen, so acp-tui keeps the last
 64 KiB and prints them if the agent exits on its own. `--agent-log FILE`
-writes all of it to a file.
+writes all of it to a file. acp-tui's own notes about the connection,
+such as a line it dropped as unreadable, go to the same place.
 
 When the agent asks permission for a tool call, the request replaces the
 input box. It shows the tool's name and its input, indented and cut to ten
@@ -249,6 +250,30 @@ time and in order.
 `internal/agent` runs the agent process, and `internal/ui` is the Bubble
 Tea program. Both are thin code around the core that carries out its
 effects.
+
+## Reading JSON
+
+acp-tui reads everything the agent sends, and every recording another
+process wrote, by the one dialect that relay and agentloop also use
+(relay#58). `internal/strictjson` implements it with
+`encoding/json/v2`. A message is one JSON object in valid UTF-8, with
+nothing but whitespace after it. A name may not appear twice in an
+object at any depth, and names match exactly, case included. Nesting
+stops at 128 levels and a number literal at 1000 characters. Unknown
+members are ignored. `testdata/strict-json/cases.jsonl` is a copy of the
+table of hostile lines shared by the three repos, and the tests run
+every case through acp-tui's reader.
+
+Each line from the agent goes through `wire.Screen` before the ACP SDK
+sees it. A line that breaks the dialect is dropped. The SDK never sees
+it, and acp-tui notes it, with a count, where it keeps the agent's stderr,
+not on the screen. The SDK decodes with `encoding/json` v1, which
+matches names without regard to case, so the screen also removes any
+member that v1 would read under a different name, such as `"Method"`
+where the message has `method`. After that the SDK reads each line the
+way relay and agentloop read it. Lines that a JSON encoder wrote pass
+through byte for byte. Answers to relay's extension methods and its
+`_meta` values are read by the strict reader directly.
 
 ## Building
 

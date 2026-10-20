@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -49,12 +50,27 @@ func Start(command []string, dir string, stderr io.Writer, emit func(core.Event)
 		return nil, errors.New("no agent command")
 	}
 	a := &Agent{emit: emit}
-	proc, err := stdio.StartClient(context.Background(), client{a}, stdio.Command{
-		Executable: command[0], Args: command[1:], Dir: dir, Stderr: stderr,
-	}, acp.ConnectionOptions{})
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	// acp-tui's notes about the agent go where its stderr goes, never to
+	// the screen.
+	log := &lockedWriter{w: stderr}
+	process, err := stdio.Start(context.Background(), stdio.Command{
+		Executable: command[0], Args: command[1:], Dir: dir, Stderr: log,
+	})
 	if err != nil {
 		return nil, err
 	}
+	// As stdio.StartClient, but the SDK reads the agent's output only
+	// through the screen.
+	conn, err := acp.NewClientSideConnectionWithOptions(client{a}, process.Input(),
+		newScreened(process.Output(), log), acp.ConnectionOptions{Logger: slog.New(slog.NewTextHandler(log, nil))})
+	if err != nil {
+		_ = process.Close()
+		return nil, err
+	}
+	proc := &stdio.ClientProcess{Connection: conn, Process: process}
 	a.proc = proc
 	var once sync.Once
 	exited := func(err error) {
