@@ -530,7 +530,8 @@ func (r *reducer) paneKey(e PaneKey) {
 			return
 		}
 		p.Trust, p.Message, p.Failure, p.Command = nil, "", "", ""
-		p.Board.Input, p.Board.Confirm, p.Board.Message, p.Board.Failure = nil, 0, "", ""
+		// An open input stays, so ctrl+x away and back keeps what was typed.
+		p.Board.Confirm, p.Board.Message, p.Board.Failure = 0, "", ""
 		p.Focus = !p.Focus
 		if p.Focus {
 			r.selectIndex(max(SelectedIndex(*s), 0))

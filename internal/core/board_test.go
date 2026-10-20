@@ -411,3 +411,81 @@ func TestArchivingAnOpenCardSaysSo(t *testing.T) {
 		t.Fatalf("%+v", s.Pane.Board)
 	}
 }
+
+// A refused op that carried text gives the operator back what they
+// typed. A stale edit reopens with the rev now held, so Enter resends it
+// on purpose.
+func TestRefusalGivesTheTypedTextBack(t *testing.T) {
+	s := onBoard(checklist(10, 15, false))
+	s, _ = boardKeys(s, PaneEnter, PaneDown, PaneEdit)
+	s = typeText(s, " mine")
+	s, _ = boardKeys(s, PaneEnter)
+	newer := checklist(10, 16, false)
+	newer.Items[0].Text = "changed again"
+	s, _ = Reduce(s, CardsChanged{At: t0, Rev: 16, Cards: []Card{newer}})
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Err: "Item 1 was changed at rev 16, after rev 15."})
+	b := s.Pane.Board
+	in := b.Input
+	if in == nil || in.Text != "step mine" || in.Op.Op != "edit" || *in.Op.Item != 1 || *in.Op.Seen != 16 || in.Op.Text != nil {
+		t.Fatalf("input %+v", in)
+	}
+	if b.Message != "Refused." || b.Failure == "" {
+		t.Fatalf("%+v", b)
+	}
+	_, fx := boardKeys(s, PaneEnter)
+	ops := effectsOf[SendCardOp](fx)
+	if len(ops) != 1 || *ops[0].Op.Seen != 16 || *ops[0].Op.Text != "step mine" {
+		t.Fatalf("ops %+v", ops)
+	}
+
+	// An add refused for its length comes back too.
+	s = onBoard(checklist(10, 10))
+	s, _ = boardKeys(s, PaneEnter, PaneAdd)
+	s = typeText(s, "yyy")
+	s, _ = boardKeys(s, PaneEnter)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Err: "An item is at most 200 characters."})
+	if in := s.Pane.Board.Input; in == nil || in.Text != "yyy" || in.Op.Op != "add" || in.Op.Seen != nil {
+		t.Fatalf("input %+v", in)
+	}
+
+	// A refused tick has no text to give back.
+	s = onBoard(checklist(10, 10, false))
+	s, _ = boardKeys(s, PaneEnter, PaneDown, PaneMark)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Err: "no"})
+	if s.Pane.Board.Input != nil {
+		t.Fatal("input opened for a tick")
+	}
+
+	// An input the operator opened meanwhile is not replaced.
+	s = onBoard(checklist(10, 10), checklist(20, 20))
+	s, _ = boardKeys(s, PaneEnter, PaneAdd)
+	s = typeText(s, "first")
+	s, _ = boardKeys(s, PaneEnter, PaneEsc, PaneDown, PaneArchive)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Err: "no"})
+	if s.Pane.Board.Input != nil || s.Pane.Board.Confirm != 20 {
+		t.Fatalf("%+v", s.Pane.Board)
+	}
+}
+
+func TestBusyNoticeGoesWhenTheOpIsDone(t *testing.T) {
+	s := onBoard(checklist(10, 10, false))
+	s, _ = boardKeys(s, PaneEnter, PaneDown, PaneMark, PaneMark)
+	if s.Pane.Board.Message == "" {
+		t.Fatal("no busy notice")
+	}
+	after := checklist(10, 11, true)
+	s, _ = Reduce(s, CardOpDone{At: t0, CardID: 10, Card: &after})
+	if s.Pane.Board.Message != "" {
+		t.Fatalf("message %q after the op was done", s.Pane.Board.Message)
+	}
+}
+
+func TestCtrlXKeepsTheTypedText(t *testing.T) {
+	s := onBoard(checklist(10, 10))
+	s, _ = boardKeys(s, PaneEnter, PaneAdd)
+	s = typeText(s, "half")
+	s, _ = boardKeys(s, PaneToggle, PaneToggle)
+	if in := s.Pane.Board.Input; in == nil || in.Text != "half" {
+		t.Fatalf("input %+v", in)
+	}
+}

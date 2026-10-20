@@ -154,8 +154,11 @@ type Board struct {
 	// Confirm is the card waiting for y to archive it.
 	Confirm int64
 	// Sending is the card an op is on its way for; the op is its name.
+	// Sent is the input the op came from, if it carried text, so a
+	// refusal can give the operator back what they typed.
 	Sending   int64
 	SendingOp string
+	Sent      *BoardInput
 	// Message is the outcome of the last action, and Failure relay's
 	// refusal, shown escaped.
 	Message string
@@ -319,11 +322,18 @@ func (r *reducer) board(e Event) {
 		}
 		r.keepBoardSelection()
 	case CardOpDone:
+		sent := b.Sent
 		if b.Sending == e.CardID {
-			b.Sending, b.SendingOp = 0, ""
+			b.Sending, b.SendingOp, b.Sent = 0, "", nil
+		}
+		if b.Message == busyNotice {
+			b.Message = ""
 		}
 		if e.Err != "" {
 			b.Message, b.Failure = "Refused.", e.Err
+			if sent != nil && sent.Card == e.CardID {
+				r.reopen(*sent)
+			}
 			return
 		}
 		if e.Card != nil {
@@ -336,6 +346,28 @@ func (r *reducer) board(e Event) {
 		}
 		r.keepBoardSelection()
 	}
+}
+
+// reopen gives the operator back the text relay refused, in the input
+// it was typed in, unless they have since moved on to another input or a
+// confirm, or the card has left the board. An edit takes the rev of the
+// card as now held, so the operator, who has just read why relay refused,
+// can send it again on purpose; Was is cleared so Enter always sends.
+func (r *reducer) reopen(in BoardInput) {
+	b := &r.s.Pane.Board
+	if b.Input != nil || b.Confirm != 0 {
+		return
+	}
+	i := slices.IndexFunc(b.Cards, func(c Card) bool { return c.ID == in.Card })
+	if i < 0 {
+		return
+	}
+	if in.Op.Seen != nil {
+		in.Op.Seen = int64p(b.Cards[i].Rev)
+	}
+	in.Op.Text, in.Was = nil, ""
+	b.SelID = in.Card
+	b.Input = &in
 }
 
 // toggleBoard switches the pane between the board and the items, and asks relay for it the
@@ -447,11 +479,15 @@ func (r *reducer) boardKey(e PaneKey) {
 	}
 }
 
+// busyNotice is what a key that came while an op was on its way says.
+// It goes when the op is done.
+const busyNotice = "Still sending the last change; that key was not sent."
+
 // busy says an op is on its way, and says so.
 func (r *reducer) busy() bool {
 	b := &r.s.Pane.Board
 	if b.Sending != 0 {
-		b.Message = "Still sending the last change."
+		b.Message = busyNotice
 		return true
 	}
 	return false
@@ -588,6 +624,7 @@ func (r *reducer) inputKey(e PaneKey, in *BoardInput) {
 		op := in.Op
 		op.Text = strp(in.Text)
 		r.sendOp(in.Card, op)
+		b.Sent = in
 	}
 }
 

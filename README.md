@@ -168,7 +168,8 @@ Keys on the board:
   E renames the selected column. A note's text cannot be edited here.
 - X archives the selected card, after you confirm with y. relay's CLI can
   restore it.
-- r asks relay for the board again; b goes back to the workspace items.
+- r asks relay for the board again; b goes back to the workspace items. An agent with
+  no board is not asked again.
 
 Adding and editing use a one-line input at the foot of the pane: Enter
 sends, Esc cancels. An edit starts from the current text, unless that text
@@ -180,8 +181,12 @@ nowhere, as anywhere else in the pane.
 
 acp-tui never changes a card itself. Each key sends relay an op with
 `_relay/cards/op` and waits for the card relay sends back. Until then the
-card is marked `sending…` and the next op waits. When relay refuses an op,
-the pane shows "Refused." with relay's reason.
+card is marked `sending…`, and a key for another op is dropped with a
+note saying so. When relay refuses an op, the pane shows "Refused." with
+relay's reason. If the op carried text, the input opens again with what
+you typed. After a refused edit it carries the card's current revision,
+so Enter sends your text over the newer change; Esc drops it. Leaving
+the pane with ctrl+x keeps an open input as it was.
 
 Card text is shown as relay sent it. relay has already made hidden
 characters visible and defanged links in text from outside, which it
