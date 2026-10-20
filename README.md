@@ -270,8 +270,12 @@ it, and acp-tui notes it, with a count, where it keeps the agent's stderr,
 not on the screen. The SDK decodes with `encoding/json` v1, which
 matches names without regard to case, so the screen also removes any
 member that v1 would read under a different name, such as `"Method"`
-where the message has `method`. After that the SDK reads each line the
-way relay and agentloop read it. Lines that a JSON encoder wrote pass
+where the message has `method`. It does this first for the SDK's own
+envelope, the step where the SDK reads `method` and `id`, so the member
+goes even when the params that follow cannot be decoded. A line the SDK
+cannot read as an envelope at all, such as one whose `method` is not a
+string, is dropped. After that the SDK reads each line the way relay and
+agentloop read it. Lines that a JSON encoder wrote pass
 through byte for byte. Answers to relay's extension methods and its
 `_meta` values are read by the strict reader directly.
 

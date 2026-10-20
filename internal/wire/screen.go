@@ -31,17 +31,29 @@ type envelope[P, R any] struct {
 // member v1 would read under a name other than the one written, given the
 // types the SDK decodes the message into. A line any JSON encoder wrote
 // comes back unchanged.
+//
+// The SDK reads every line first as its own envelope, with params and
+// result raw, and dispatches on the method and id it reads there. Screen
+// therefore always prepares the line for that envelope first, and drops a
+// line the SDK could not read as one, so that a member such as "Method"
+// is gone even when the typed params that follow cannot be decoded.
 func Screen(line []byte) ([]byte, error) {
 	if err := strictjson.Message(line); err != nil {
+		return nil, err
+	}
+	// The SDK's anyMessage, which also takes "id" by its exact name; a
+	// folded "ID" is removed here, so the two lookups agree.
+	out, err := strictjson.ForV1(line, &envelope[json.RawMessage, json.RawMessage]{})
+	if err != nil {
+		// Undecodable included: the SDK cannot read it either.
 		return nil, err
 	}
 	var m struct {
 		Method *string        `json:"method"`
 		Result jsontext.Value `json:"result"`
 	}
-	if err := strictjson.Unmarshal(line, &m); err != nil {
-		// A method that is not a string: the SDK refuses it too.
-		return line, nil
+	if err := strictjson.Unmarshal(out, &m); err != nil {
+		return nil, err
 	}
 	var targets []any
 	switch {
@@ -58,16 +70,15 @@ func Screen(line []byte) ([]byte, error) {
 			&envelope[json.RawMessage, *acp.NewSessionResponse]{},
 			&envelope[json.RawMessage, *acp.PromptResponse]{},
 		}
-	default:
-		// Extension notifications carry raw params, which wire reads
-		// strictly; anything else the SDK does not dispatch.
-		targets = []any{&envelope[json.RawMessage, json.RawMessage]{}}
 	}
-	out := line
+	// Extension notifications carry raw params, which wire reads strictly,
+	// so the envelope pass above is all they need.
 	for _, t := range targets {
 		next, err := strictjson.ForV1(out, t)
 		if errors.Is(err, strictjson.ErrUndecodable) {
-			continue // the SDK cannot decode it as this either
+			// The SDK fails on the params or result as this type, after
+			// it has dispatched on the envelope screened above.
+			continue
 		}
 		if err != nil {
 			return nil, err

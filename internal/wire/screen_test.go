@@ -115,3 +115,44 @@ func TestScreenPassesEncodedLines(t *testing.T) {
 		}
 	})
 }
+
+// The SDK dispatches on its raw envelope before it decodes typed params,
+// so a folded envelope member goes even when those params cannot be
+// decoded (relay#58 review): otherwise v1 would take "Method" or "ID" and
+// dispatch the line as something the dialect does not see.
+func TestScreenRemovesFoldedEnvelopeMembersBeforeTypedParams(t *testing.T) {
+	cases := []struct{ in, out string }{
+		{`{"jsonrpc":"2.0","method":"session/update","Method":"_relay/cards/changed","params":{"sessionId":5,"rev":7,"cards":[]}}`,
+			`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":5,"rev":7,"cards":[]}}`},
+		{`{"jsonrpc":"2.0","id":1,"method":"session/request_permission","Method":"_relay/cards/changed","params":{"sessionId":5}}`,
+			`{"jsonrpc":"2.0","id":1,"method":"session/request_permission","params":{"sessionId":5}}`},
+		// No exact id: the dialect reads a notification, and so must the SDK.
+		{`{"jsonrpc":"2.0","ID":1,"method":"session/request_permission","params":{"sessionId":5}}`,
+			`{"jsonrpc":"2.0","method":"session/request_permission","params":{"sessionId":5}}`},
+		// A result none of the typed answers can hold, and a folded error.
+		{`{"jsonrpc":"2.0","id":3,"result":{"stopReason":5,"protocolVersion":"x","sessionId":5},"Error":{"code":1,"message":"m"}}`,
+			`{"jsonrpc":"2.0","id":3,"result":{"stopReason":5,"protocolVersion":"x","sessionId":5}}`},
+	}
+	for _, c := range cases {
+		out, err := Screen([]byte(c.in))
+		if err != nil {
+			t.Errorf("%s: %v", c.in, err)
+			continue
+		}
+		if string(out) != c.out {
+			t.Errorf("%s\n got %s\nwant %s", c.in, out, c.out)
+		}
+	}
+}
+
+// A line the SDK cannot read as its envelope at all is dropped here.
+func TestScreenDropsWhatTheSDKCannotRead(t *testing.T) {
+	for _, in := range []string{
+		`{"jsonrpc":"2.0","method":5}`,
+		`{"jsonrpc":"2.0","id":3,"error":"no"}`,
+	} {
+		if out, err := Screen([]byte(in)); err == nil {
+			t.Errorf("%s passed as %s", in, out)
+		}
+	}
+}
