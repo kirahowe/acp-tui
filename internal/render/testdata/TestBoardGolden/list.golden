@@ -22,5 +22,5 @@
 
 
 
-␛[0;2m↑↓ select · enter open · X archive · b␛[m
-␛[0;2mworkspace · esc back␛[m
+␛[0;2m↑↓ select · enter open · e retitle · X␛[m
+␛[0;2marchive · r reload · b workspace · esc back␛[m

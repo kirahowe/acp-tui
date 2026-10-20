@@ -212,3 +212,31 @@ func TestBoardNeverEmitsRawControls(t *testing.T) {
 		}
 	})
 }
+
+// Every board view's hint names the keys that work there: r and b in the
+// list and in each card, and no r where it would do nothing.
+func TestBoardHintsNameTheKeys(t *testing.T) {
+	all := boardState(true, cardTracker, cardChecklist, cardNote)
+	views := map[string]core.State{
+		"list":      all,
+		"tracker":   detail(all, 1840, 1, 0),
+		"checklist": detail(all, 1851, 1, 0),
+		"note":      detail(all, 1860, 0, 0),
+	}
+	for name, s := range views {
+		foot := strings.Join(PaneLines(s, t0, 200, 26), " ")
+		for _, want := range []string{"r reload", "b workspace", "X archive"} {
+			if !strings.Contains(ansi.Strip(foot), want) {
+				t.Errorf("%s: no %q in %q", name, want, ansi.Strip(foot))
+			}
+		}
+	}
+	if foot := ansi.Strip(strings.Join(PaneLines(all, t0, 200, 26), " ")); !strings.Contains(foot, "e retitle") {
+		t.Errorf("list: no e retitle in %q", foot)
+	}
+	none := boardState(true)
+	none.Pane.Board.Unavailable, none.Pane.Board.Loaded = true, false
+	if foot := ansi.Strip(strings.Join(PaneLines(none, t0, 200, 26), " ")); strings.Contains(foot, "r reload") {
+		t.Errorf("no board offers r: %q", foot)
+	}
+}

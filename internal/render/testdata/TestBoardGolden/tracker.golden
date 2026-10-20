@@ -22,5 +22,5 @@
 
 ␛[0;2mcell: ␛[mBMO␛[0;2m × ␛[mAug␛[0;2m · ␛[mopen
 ␛[0;2m↑↓←→ select · x mark · a row · A column · e␛[m
-␛[0;2mrename · E rename column · X archive · esc␛[m
-␛[0;2mback␛[m
+␛[0;2mrename · E rename column · X archive · r␛[m
+␛[0;2mreload · b workspace · esc back␛[m

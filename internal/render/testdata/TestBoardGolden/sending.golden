@@ -23,4 +23,4 @@
 
 
 ␛[0;2m↑↓ select · x tick · a add · e edit · X␛[m
-␛[0;2marchive · esc back␛[m
+␛[0;2marchive · r reload · b workspace · esc back␛[m

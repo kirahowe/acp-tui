@@ -305,14 +305,17 @@ func boardParts(s core.State, width int) parts {
 		pr.foot = cellLine(b, c, width)
 		switch c.Kind {
 		case core.CardChecklist:
-			pr.foot = append(pr.foot, hint("↑↓ select · x tick · a add · e edit · X archive · esc back")...)
+			pr.foot = append(pr.foot, hint("↑↓ select · x tick · a add · e edit · X archive · r reload · b workspace · esc back")...)
 		case core.CardTracker:
-			pr.foot = append(pr.foot, hint("↑↓←→ select · x mark · a row · A column · e rename · E rename column · X archive · esc back")...)
+			pr.foot = append(pr.foot, hint("↑↓←→ select · x mark · a row · A column · e rename · E rename column · X archive · r reload · b workspace · esc back")...)
 		default:
-			pr.foot = append(pr.foot, hint("e retitle · X archive · esc back")...)
+			pr.foot = append(pr.foot, hint("e retitle · X archive · r reload · b workspace · esc back")...)
 		}
 	case len(b.Cards) > 0:
-		pr.foot = hint("↑↓ select · enter open · X archive · b workspace · esc back")
+		pr.foot = hint("↑↓ select · enter open · e retitle · X archive · r reload · b workspace · esc back")
+	case b.Unavailable:
+		// r would not ask again: the agent has no such method.
+		pr.foot = hint("b workspace · esc back")
 	default:
 		pr.foot = hint("r reload · b workspace · esc back")
 	}
