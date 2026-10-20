@@ -128,11 +128,32 @@ func TestForV1Ambiguous(t *testing.T) {
 	// cannot be seen in what it read.
 	for _, in := range []string{
 		`{"jsonrpc":"2.0","method":"m","Method":""}`,
-		`{"jsonrpc":"2.0","foo":1,"Foo":2}`,
+		`{"jsonrpc":"2.0","Method":"m","METHOD":""}`,
+		`{"jsonrpc":"2.0","method":"m","params":{"sessionId":"s","Title":"t","TITLE":""}}`,
 	} {
 		var e envelope
 		if _, err := ForV1([]byte(in), &e); err == nil {
 			t.Errorf("%s: accepted", in)
+		}
+	}
+}
+
+// Case variants of a name the type does not have are unknown to v1 as
+// to this dialect, so the line passes as written.
+func TestForV1PassesUnknownCaseVariants(t *testing.T) {
+	for _, in := range []string{
+		`{"jsonrpc":"2.0","foo":1,"Foo":2}`,
+		`{"jsonrpc":"2.0","method":"x/y","ext":1,"Ext":2,"EXT":3}`,
+		`{"jsonrpc":"2.0","method":"m","params":{"sessionId":"s","xFoo":1,"xfoo":2}}`,
+	} {
+		var e envelope
+		got, err := ForV1([]byte(in), &e)
+		if err != nil {
+			t.Errorf("%s: %v", in, err)
+			continue
+		}
+		if string(got) != in {
+			t.Errorf("%s: changed to %s", in, got)
 		}
 	}
 }

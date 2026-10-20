@@ -270,7 +270,11 @@ it, and acp-tui notes it, with a count, where it keeps the agent's stderr,
 not on the screen. The SDK decodes with `encoding/json` v1, which
 matches names without regard to case, so the screen also removes any
 member that v1 would read under a different name, such as `"Method"`
-where the message has `method`. It does this first for the SDK's own
+where the message has `method`. Names that differ only in case and name
+no field the SDK reads are unknown to v1 as to the dialect, and pass as
+written. If v1 would put one of them in
+a field and which one it took cannot be seen, the line is dropped. The
+screen does this first for the SDK's own
 envelope, the step where the SDK reads `method` and `id`, so the member
 goes even when the params that follow cannot be decoded. A line the SDK
 cannot read as an envelope at all, such as one whose `method` is not a

@@ -110,8 +110,9 @@ const maxPasses = 64
 // what this dialect reads. b comes back unchanged when nothing needs
 // removing, which is every line a JSON encoder wrote. v is set to the v1
 // decoding of the result. Two members that fold to the same name and that
-// v1 reads under neither are an error, since which one v1 takes is not
-// knowable here. Anything v1 cannot decode into v at all comes back
+// v1 keeps under neither pass when v1 ignores both, as an unknown name;
+// when v1 puts one of them in a field, they are an error, since which one
+// it takes is not knowable here. Anything v1 cannot decode into v at all comes back
 // unchanged with ErrUndecodable, for the caller to decide.
 func ForV1(b []byte, v any) ([]byte, error) {
 	rv := reflect.ValueOf(v)
@@ -136,8 +137,12 @@ func ForV1(b []byte, v any) ([]byte, error) {
 			return b, err
 		}
 		drop := map[jsontext.Pointer]bool{}
-		if err := misread(written, read, "", drop); err != nil {
-			return b, err
+		var groups [][]jsontext.Pointer
+		misread(written, read, "", drop, &groups)
+		for _, g := range groups {
+			if err := ignored(b, g, rv.Elem().Type()); err != nil {
+				return b, err
+			}
 		}
 		if len(drop) == 0 {
 			rv.Elem().Set(fresh.Elem())
@@ -206,16 +211,17 @@ var errAmbiguous = errors.New("member names that differ only in case")
 // misread compares what was written with what v1 read, re-encoded, and
 // records in drop each written member that v1 read under another name.
 // A written name v1 did not keep, that folds to one it kept, is one.
-func misread(written, read *node, at jsontext.Pointer, drop map[jsontext.Pointer]bool) error {
+// Written names that fold together where v1 kept none of them go to
+// groups, one group of members per object, for ignored to settle.
+func misread(written, read *node, at jsontext.Pointer, drop map[jsontext.Pointer]bool, groups *[][]jsontext.Pointer) {
 	if written == nil || read == nil {
-		return nil
+		return
 	}
 	if written.members != nil && read.members != nil {
+		grouped := map[string]bool{}
 		for name, child := range written.members {
 			if sub, ok := read.members[name]; ok {
-				if err := misread(child, sub, at.AppendToken(name), drop); err != nil {
-					return err
-				}
+				misread(child, sub, at.AppendToken(name), drop, groups)
 				continue
 			}
 			for other := range read.members {
@@ -223,19 +229,61 @@ func misread(written, read *node, at jsontext.Pointer, drop map[jsontext.Pointer
 					drop[at.AppendToken(name)] = true
 				}
 			}
-			if drop[at.AppendToken(name)] {
+			if drop[at.AppendToken(name)] || grouped[name] {
 				continue
 			}
+			g := []jsontext.Pointer{at.AppendToken(name)}
 			for other := range written.members {
 				if _, kept := read.members[other]; !kept && other != name && strings.EqualFold(other, name) {
-					return fmt.Errorf("%w at %q", errAmbiguous, at)
+					g = append(g, at.AppendToken(other))
+					grouped[other] = true
 				}
+			}
+			if len(g) > 1 {
+				grouped[name] = true
+				*groups = append(*groups, g)
 			}
 		}
 	}
 	for i := range min(len(written.elements), len(read.elements)) {
-		if err := misread(written.elements[i], read.elements[i], at.AppendToken(fmt.Sprint(i)), drop); err != nil {
-			return err
+		misread(written.elements[i], read.elements[i], at.AppendToken(fmt.Sprint(i)), drop, groups)
+	}
+}
+
+// ignored reports an error unless v1, decoding b into t, ignores every
+// member in group: names that differ only in case, none of which v1 kept
+// in what it read. v1 may still have put one in a field that the
+// re-encoding hides, such as a zero value under omitempty, and which one
+// it took is not knowable from what it read. So each member is tried
+// alone, the others removed, against none of them: if no member changes
+// what v1 decodes, v1 ignores them all as this dialect does, and b may
+// pass as written.
+func ignored(b []byte, group []jsontext.Pointer, t reflect.Type) error {
+	decode := func(keep jsontext.Pointer) (any, error) {
+		drop := map[jsontext.Pointer]bool{}
+		for _, p := range group {
+			if p != keep {
+				drop[p] = true
+			}
+		}
+		pruned, err := without(b, drop)
+		if err != nil {
+			return nil, err
+		}
+		v := reflect.New(t)
+		if err := jsonv1.Unmarshal(pruned, v.Interface()); err != nil {
+			return nil, err
+		}
+		return v.Interface(), nil
+	}
+	none, err := decode("")
+	if err != nil {
+		return fmt.Errorf("%w at %q", errAmbiguous, group[0].Parent())
+	}
+	for _, p := range group {
+		one, err := decode(p)
+		if err != nil || !reflect.DeepEqual(one, none) {
+			return fmt.Errorf("%w at %q", errAmbiguous, p.Parent())
 		}
 	}
 	return nil

@@ -85,6 +85,24 @@ func TestScreenRemovesWhatV1WouldFold(t *testing.T) {
 	}
 }
 
+// Members that differ only in case and fold to no field are unknown to
+// the SDK as to the dialect, so the screen passes them as relay does.
+func TestScreenPassesUnknownCaseVariants(t *testing.T) {
+	for _, in := range []string{
+		`{"jsonrpc":"2.0","method":"x/y","ext":1,"Ext":2}`,
+		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c","title":"t","xFoo":1,"xfoo":2}}}`,
+	} {
+		out, err := Screen([]byte(in))
+		if err != nil {
+			t.Errorf("%s: %v", in, err)
+			continue
+		}
+		if string(out) != in {
+			t.Errorf("%s: changed to %s", in, out)
+		}
+	}
+}
+
 // What an encoder writes passes the screen byte for byte.
 func TestScreenPassesEncodedLines(t *testing.T) {
 	kinds := []string{"agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update",
