@@ -4,7 +4,7 @@
 ␛[0;2m│␛[m ctrl+t              ␛[0;2mtranscript with tool calls in full␛[m␛[0;2m  ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ctrl+o              ␛[0;2mtranscript with thinking in full␛[m␛[0;2m    ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ctrl+x              ␛[0;2mworkspace pane␛[m␛[0;2m                      ␛[m ␛[0;2m│␛[m
-␛[0;2m│␛[m ctrl+y              ␛[0;2mnext paste goes in as trusted text␛[m␛[0;2m  ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ctrl+y              ␛[0;2mtrust the latest paste in the input␛[m␛[0;2m ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ctrl+c              ␛[0;2mstop the turn, clear, or quit␛[m␛[0;2m       ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ctrl+d              ␛[0;2mquit, from an empty input␛[m␛[0;2m           ␛[m ␛[0;2m│␛[m
 ␛[0;2m│␛[m ?                   ␛[0;2mthese keys, from an empty input␛[m␛[0;2m     ␛[m ␛[0;2m│␛[m

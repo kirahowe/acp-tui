@@ -285,7 +285,7 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 	case Help:
 		return core.ToggleHelp{At: now}, nil
 	case TrustPaste:
-		return core.ToggleTrustedPaste{At: now}, nil
+		return core.TrustPaste{At: now, Draft: m.input.Value()}, nil
 	case TogglePane:
 		return core.PaneKey{At: now, Action: core.PaneToggle}, nil
 	}
@@ -392,6 +392,8 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 			text += "\n" + v
 		}
 		m.input.SetValue(text)
+	case core.ReplaceInput:
+		m.input.SetValue(strings.Replace(m.input.Value(), f.Old, f.New, 1))
 	case core.Quit:
 		m.quitting = true // stop ends the program
 	}

@@ -10,7 +10,9 @@ import (
 // page) reaches the agent. So a paste is not typed into the prompt: it is
 // held, the input shows a placeholder, and on send the prompt carries it
 // as an embedded resource, which the agent labels contaminated. The
-// person can paste one block as trusted text instead (ToggleTrustedPaste).
+// person can then mark one block as trusted text (TrustPaste), after the
+// fact and on a placeholder in view: a paste is always untrusted when it
+// arrives, so nothing is armed ahead of it for a later paste to inherit.
 // Where the agent takes no embedded context, the text goes in the prompt
 // and the transcript says it was not labelled.
 
@@ -18,6 +20,9 @@ import (
 type Paste struct {
 	ID   int
 	Text string
+	// Trusted says the person marked it trusted; its placeholder then
+	// reads "trusted", and it is sent as plain text, not an attachment.
+	Trusted bool
 }
 
 // Lines is how many lines the paste has.
@@ -31,7 +36,18 @@ func (p Paste) Token() string {
 	if n == 1 {
 		unit = "line"
 	}
-	return fmt.Sprintf("[pasted %d %s · untrusted #%d]", n, unit, p.ID)
+	word := "untrusted"
+	if p.Trusted {
+		word = "trusted"
+	}
+	return fmt.Sprintf("[pasted %d %s · %s #%d]", n, unit, word, p.ID)
+}
+
+// untrustedToken is the placeholder the paste had when it arrived.
+func (p Paste) untrustedToken() string {
+	q := p
+	q.Trusted = false
+	return q.Token()
 }
 
 // Ref is how the prompt's text refers to the paste's resource.
@@ -55,40 +71,40 @@ type (
 		At   time.Time
 		Text string
 	}
-	// ToggleTrustedPaste arms (or disarms) the next paste to go in as
-	// plain, trusted text.
-	ToggleTrustedPaste struct{ At time.Time }
+	// TrustPaste marks the latest paste whose untrusted placeholder is
+	// still in the input as trusted. Draft is the input's text.
+	TrustPaste struct {
+		At    time.Time
+		Draft string
+	}
 )
 
-func (e Pasted) at() time.Time             { return e.At }
-func (e ToggleTrustedPaste) at() time.Time { return e.At }
+func (e Pasted) at() time.Time     { return e.At }
+func (e TrustPaste) at() time.Time { return e.At }
 
 // InsertInput asks the shell to insert text at the input's cursor.
 type InsertInput struct{ Text string }
 
-func (InsertInput) effect() {}
+// ReplaceInput asks the shell to replace the first Old in the input with
+// New, where it stands.
+type ReplaceInput struct{ Old, New string }
+
+func (InsertInput) effect()  {}
+func (ReplaceInput) effect() {}
+
+// Message is a short word for the status line that goes by itself.
+type Message struct {
+	Text string
+	At   time.Time
+}
+
+// MessageFor is how long a Message shows.
+const MessageFor = 6 * time.Second
 
 func (r *reducer) pasted(e Pasted) {
 	s := &r.s
-	if s.Phase == Exited || len(s.Asks) > 0 || s.Pane.Focus || (s.Transcript.Open && !s.Shared) {
-		// Nothing pasted while a request waits or something else has the
-		// keys goes anywhere. It uses up an armed trust all the same: the
-		// trust was for this block, not for whatever is pasted next.
-		s.TrustNext = false
-		return
-	}
-	if e.Text == "" {
-		return
-	}
-	if s.TrustNext {
-		s.TrustNext = false
-		r.emit(InsertInput{Text: e.Text})
-		unit := "lines"
-		if pasteLines(e.Text) == 1 {
-			unit = "line"
-		}
-		r.add(Entry{Kind: Note, Text: fmt.Sprintf("pasted %d %s as trusted text, not labelled", pasteLines(e.Text), unit), Final: true})
-		return
+	if !r.inputInPlay() || e.Text == "" {
+		return // nothing pasted while a request waits or something else has the keys goes anywhere
 	}
 	s.NextPaste++
 	p := Paste{ID: s.NextPaste, Text: e.Text}
@@ -96,28 +112,61 @@ func (r *reducer) pasted(e Pasted) {
 	r.emit(InsertInput{Text: p.Token()})
 }
 
+// inputInPlay says the input box has the keys.
+func (r *reducer) inputInPlay() bool {
+	s := &r.s
+	return !(s.Phase == Exited || len(s.Asks) > 0 || s.Pane.Focus || (s.Transcript.Open && !s.Shared))
+}
+
+// trustPaste marks the latest paste still in the draft as trusted and has
+// the placeholder say so. With none to mark it says so on the status line.
+func (r *reducer) trustPaste(e TrustPaste) {
+	s := &r.s
+	if !r.inputInPlay() {
+		return
+	}
+	for i := len(s.Pastes) - 1; i >= 0; i-- {
+		p := s.Pastes[i]
+		if p.Trusted || !strings.Contains(e.Draft, p.Token()) {
+			continue
+		}
+		old := p.Token()
+		s.Pastes[i].Trusted = true
+		r.emit(ReplaceInput{Old: old, New: s.Pastes[i].Token()})
+		s.Message = Message{}
+		return
+	}
+	s.Message = Message{Text: "no untrusted paste in the input to trust", At: e.At}
+}
+
 // resolve turns the text of a prompt into what is sent: the placeholders
 // it still holds become references to attachments, or, where the agent
 // takes no embedded context, the pasted text itself. Pastes whose
 // placeholder was deleted are not sent. inlined counts the pastes that
 // went in as plain text.
-func (r *reducer) resolve(text string) (out string, atts []Attachment, inlined int) {
+func (r *reducer) resolve(text string) (out string, atts []Attachment, inlined, trusted int) {
 	s := &r.s
 	var rest []Paste
 	for _, p := range s.Pastes {
-		tok := p.Token()
-		if !strings.Contains(text, tok) {
+		// What the placeholder says decides, so a draft that still shows
+		// "untrusted" is sent as an attachment whatever was marked.
+		switch {
+		case strings.Contains(text, p.untrustedToken()):
+			tok := p.untrustedToken()
+			if s.Embedded {
+				text = strings.ReplaceAll(text, tok, p.Ref())
+				atts = append(atts, Attachment{URI: p.URI(), Text: p.Text})
+			} else {
+				text = strings.ReplaceAll(text, tok, p.Text)
+				inlined++
+			}
+		case p.Trusted && strings.Contains(text, p.Token()):
+			text = strings.ReplaceAll(text, p.Token(), p.Text)
+			trusted++
+		default:
 			rest = append(rest, p)
-			continue
-		}
-		if s.Embedded {
-			text = strings.ReplaceAll(text, tok, p.Ref())
-			atts = append(atts, Attachment{URI: p.URI(), Text: p.Text})
-		} else {
-			text = strings.ReplaceAll(text, tok, p.Text)
-			inlined++
 		}
 	}
 	s.Pastes = rest
-	return text, atts, inlined
+	return text, atts, inlined, trusted
 }

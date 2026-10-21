@@ -85,7 +85,7 @@ var InlineKeys = []KeyHelp{
 	{[]string{"ctrl+t"}, "transcript with tool calls in full"},
 	{[]string{"ctrl+o"}, "transcript with thinking in full"},
 	{[]string{"ctrl+x"}, "workspace pane"},
-	{[]string{"ctrl+y"}, "next paste goes in as trusted text"},
+	{[]string{"ctrl+y"}, "trust the latest paste in the input"},
 	{[]string{"ctrl+c"}, "stop the turn, clear, or quit"},
 	{[]string{"ctrl+d"}, "quit, from an empty input"},
 	{[]string{"?"}, "these keys, from an empty input"},

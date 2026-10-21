@@ -71,9 +71,9 @@ func TestTranscriptScrollStaysInRange(t *testing.T) {
 	})
 }
 
-// A paste that goes nowhere uses up an armed trust, so the next paste,
-// perhaps from somewhere else, goes in as untrusted.
-func TestDroppedPasteDisarmsTrust(t *testing.T) {
+// A paste that goes nowhere is dropped whole, and nothing is left behind
+// for a later one to inherit.
+func TestDroppedPasteLeavesNothing(t *testing.T) {
 	cases := map[string]func(State) State{
 		"transcript": func(s State) State { s, _ = Reduce(s, ShowTools{At: t0}); return s },
 		"pane":       func(s State) State { s.Pane.Focus = true; return s },
@@ -84,11 +84,11 @@ func TestDroppedPasteDisarmsTrust(t *testing.T) {
 		},
 	}
 	for name, away := range cases {
-		s, _ := run(Connected{At: t0, Embedded: true}, ToggleTrustedPaste{At: t0})
+		s, _ := run(Connected{At: t0, Embedded: true})
 		s = away(s)
-		s, fx := Reduce(s, Pasted{At: t0, Text: "meant to be trusted"})
-		if s.TrustNext || len(fx) != 0 {
-			t.Errorf("%s: trust %v, effects %+v", name, s.TrustNext, fx)
+		s, fx := Reduce(s, Pasted{At: t0, Text: "dropped"})
+		if len(s.Pastes) != 0 || len(fx) != 0 {
+			t.Errorf("%s: pastes %v, effects %+v", name, s.Pastes, fx)
 		}
 	}
 }

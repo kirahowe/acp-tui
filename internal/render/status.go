@@ -62,6 +62,7 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 			add(strconv.Itoa(l.Asks) + " requests")
 		}
 	}
+	add(oneLine(l.Message))
 	if l.Remote == core.TurnQueued {
 		add("waiting for the role's scheduled work")
 	}
@@ -109,9 +110,6 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 func badges(sl core.StatusLine) string {
 	l := sl.Labels
 	var b string
-	if sl.TrustNext {
-		b += sgr(bold) + "[next paste: trusted]" + sgr(faint) + " "
-	}
 	if l.Private {
 		b += sgr(bold) + "[private]" + sgr(faint) + " "
 	}

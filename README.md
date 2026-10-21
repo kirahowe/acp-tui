@@ -238,6 +238,12 @@ What the sidebar shows beside a role (the `?` list explains them too):
 - `?2` two permission requests wait, in reverse video; `!1` one of the
   role's calls is held for you
 
+A request is bounded: its title takes three rows and each option two, and
+`v` puts all of it in the conversation. When the window cannot show the
+role's name, the request, its options and the status line with three
+rows of conversation left to scroll through, the view says "Window too
+small" and the keys that allow do nothing (esc still cancels).
+
 A request from a conversation in the background shows as `?N` beside its
 role and is answered after switching to it. Switching starts the 600 ms
 delay again, so a key typed for the switch cannot approve it. When
@@ -282,12 +288,17 @@ makes egress need your approval from then on. Delete a placeholder from
 the input and that paste is not sent. A terminal that does not do
 bracketed paste types the text in as keys, and acp-tui cannot tell.
 
-To paste one block as trusted text, press Ctrl-Y first. The status line
-shows `[next paste: trusted]`, the next paste goes into the input as plain
-text, the transcript notes that it was not labelled, and the toggle
-resets. Ctrl-Y again disarms it. A paste made while a permission request
-waits, the pane has focus or the transcript is open goes nowhere, and it
-uses up an armed trust: the next paste is untrusted again.
+A paste is always untrusted when it arrives. To send one block as trusted
+text, paste it and then press Ctrl-Y: it marks the latest paste still in
+the input, and its placeholder changes to `[pasted 42 lines · trusted #1]`.
+At send it goes into the prompt as plain text, and the transcript notes
+that it was not labelled. Press Ctrl-Y again to trust the one before it.
+With no untrusted paste in the input, Ctrl-Y does nothing and the status
+line says so. Nothing is armed ahead of a paste, so no paste can inherit
+a trust meant for another. If a placeholder still reads `untrusted` when
+you send, it goes as an attachment whatever was marked. A paste made while
+a permission request waits, the pane has focus or the transcript is open
+goes nowhere.
 
 If the agent does not advertise `promptCapabilities.embeddedContext`, a
 paste cannot be labelled. It goes in the prompt as plain text and the

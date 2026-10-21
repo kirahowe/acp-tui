@@ -119,7 +119,9 @@ func view(s core.State, input, hint string, now time.Time, width, height int, ov
 	bottom = append(bottom, StatusText(st, hint, now, width))
 
 	rows := max(height-1, 1)
-	if len(s.Asks) > 0 && len(bottom) > rows {
+	// The inline view prints into scrollback, which is where v puts the
+	// whole request, so it needs no rows of conversation beyond the box.
+	if len(s.Asks) > 0 && !core.RequestFits(rows, len(bottom), 0) {
 		lines := wrap(styled(bold, "Window too small to show this request."), width)
 		for _, l := range wrap("Make it larger. Allowing is off until then; esc still cancels.", width) {
 			lines = append(lines, styled(faint, l))

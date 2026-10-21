@@ -64,7 +64,7 @@ var HubKeys = []KeyHelp{
 	{[]string{"ctrl+t"}, "show or hide tool calls"},
 	{[]string{"ctrl+o"}, "show or hide thinking"},
 	{[]string{"ctrl+x"}, "workspace pane"},
-	{[]string{"ctrl+y"}, "next paste goes in as trusted text"},
+	{[]string{"ctrl+y"}, "trust the latest paste in the input"},
 	{[]string{"ctrl+c"}, "stop the turn, clear, or quit"},
 	{[]string{"ctrl+d"}, "quit, from an empty input"},
 	{[]string{"?"}, "these keys, from an empty input"},
@@ -209,6 +209,34 @@ func plural(n int, word string) string {
 	return fmt.Sprintf("%d %ss", n, word)
 }
 
+// selected is the index of the role the list shows as selected: the
+// cursor when the list has the keys, else the one in focus. It is 0 for
+// none.
+func selected(h core.Hub) int {
+	id := h.Focus
+	if h.List {
+		id = h.Cursor
+	}
+	for i, r := range h.Roles {
+		if r.ID == id {
+			return i
+		}
+	}
+	return 0
+}
+
+// window is the rows that fit in room, per roles of per rows each, with
+// the selected role in them: the list scrolls to keep it in sight.
+func window(rows []string, per, sel, room int) []string {
+	fit := max(room/per, 0)
+	n := len(rows) / per
+	if n <= fit {
+		return rows
+	}
+	start := min(max(sel-fit+1, 0), n-fit)
+	return rows[start*per : (start+fit)*per]
+}
+
 // sidebar is the roles beside the conversation: height rows, width wide.
 func sidebar(h core.Hub, now time.Time, width, height int) []string {
 	lines := []string{styled(bold, truncate("relay", width))}
@@ -218,11 +246,14 @@ func sidebar(h core.Hub, now time.Time, width, height int) []string {
 	case len(h.Roles) == 0:
 		lines = append(lines, styled(faint, truncate("no roles", width)))
 	}
+	head := len(lines)
+	var rows []string
 	for _, r := range h.Roles {
-		lines = append(lines, roleRow(h, r, now, width))
+		rows = append(rows, roleRow(h, r, now, width))
 	}
 	foot := []string{styled(faint, truncate("ctrl+g roles · ? keys", width))}
 	room := max(height-len(foot), 0)
+	lines = append(lines, window(rows, 1, selected(h), max(room-head, 0))...)
 	if len(lines) > room {
 		lines = lines[:room]
 	}
@@ -242,9 +273,13 @@ func listScreen(h core.Hub, now time.Time, width, height int) []string {
 	case len(h.Roles) == 0:
 		lines = append(lines, styled(faint, truncate("no roles", width)))
 	}
+	head := len(lines)
+	var rows []string
 	for _, r := range h.Roles {
-		lines = append(lines, roleRow(h, r, now, width), styled(faint, truncate("  "+describe(h, r, now), width)))
+		rows = append(rows, roleRow(h, r, now, width), styled(faint, truncate("  "+describe(h, r, now), width)))
 	}
+	room0 := max(height-1, 0)
+	lines = append(lines, window(rows, 2, selected(h), max(room0-head, 0))...)
 	foot := styled(faint, truncate("enter open · up/down move · ? keys", width))
 	if h.Notice != "" {
 		foot = styled(faint, truncate("! "+oneLine(h.Notice), width))
@@ -427,7 +462,7 @@ func hubMainAt(h core.Hub, input, hint string, now time.Time, width, height int,
 		bottom = append(bottom, box("", strings.Split(input, "\n"), width)...)
 		showInput = true
 	}
-	if len(s.Asks) > 0 && !h.EndAsk && 1+len(bottom)+1 > height {
+	if len(s.Asks) > 0 && !h.EndAsk && !core.RequestFits(height, 1+len(bottom)+1, core.MinTranscriptRows) {
 		lines := []string{truncate(head, width)}
 		for _, l := range wrap(styled(bold, "Window too small to show this request."), width) {
 			lines = append(lines, l)

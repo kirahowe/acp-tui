@@ -92,14 +92,14 @@ func TestNothingLostBehindTranscript(t *testing.T) {
 	})
 }
 
-// The trust armed for a paste that went nowhere does not carry over to
-// the next paste. Codex's reproduction.
-func TestTrustNotCarriedPastTranscript(t *testing.T) {
+// Ctrl-Y before a paste does nothing to it: a paste is untrusted when it
+// arrives, wherever it came from.
+func TestPasteAfterCtrlYIsUntrusted(t *testing.T) {
 	h := startWith(t, "simple.jsonl", 80, 24, "", "-embedded")
 	h.waitIdle()
 	h.keys("\x19\x14") // ctrl+y, ctrl+t
 	h.waitScreen("the view", func(s string) bool { return strings.Contains(s, "transcript") })
-	h.keys(bracketed("meant to be trusted"))
+	h.keys(bracketed("dropped"))
 	h.keys("q")
 	h.waitIdle()
 	h.keys(bracketed("untrusted web page"))

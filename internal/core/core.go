@@ -297,12 +297,12 @@ type State struct {
 	Pick int
 	// Embedded says the agent takes embedded context. Pastes holds the
 	// pastes whose placeholders may still be in the input, or in a queued
-	// message; NextPaste numbers them. TrustNext says the next paste goes
-	// in as trusted text.
+	// message; NextPaste numbers them.
 	Embedded  bool
 	Pastes    []Paste
 	NextPaste int
-	TrustNext bool
+	// Message is a word for the status line that shows for a few seconds.
+	Message Message
 	// Pane is the workspace pane.
 	Pane Pane
 	// Transcript is the full-screen view; Help says the list of keys
@@ -373,8 +373,8 @@ func (r *reducer) apply(e Event) {
 		}
 	case Pasted:
 		r.pasted(e)
-	case ToggleTrustedPaste:
-		s.TrustNext = !s.TrustNext
+	case TrustPaste:
+		r.trustPaste(e)
 	case ItemsLoaded, CitationResolved, TrustDone, PaneKey, CardsLoaded, CardsChanged, CardOpDone:
 		r.pane(e)
 	case PermissionAsked:
@@ -661,7 +661,10 @@ func (r *reducer) send(text string, at time.Time) {
 	r.add(Entry{Kind: User, Text: text, Final: true})
 	r.s.Phase = Busy
 	r.s.Turn = Turn{Started: at, LastEvent: at}
-	sent, atts, inlined := r.resolve(text)
+	sent, atts, inlined, trusted := r.resolve(text)
+	if trusted > 0 {
+		r.add(Entry{Kind: Note, Text: fmt.Sprintf("! %d paste(s) went in as trusted text, not labelled", trusted), Final: true})
+	}
 	if inlined > 0 {
 		r.add(Entry{Kind: Note, Text: fmt.Sprintf("! %d paste(s) went in as plain text: the agent takes no attachments, so they were not labelled untrusted", inlined), Final: true})
 	}

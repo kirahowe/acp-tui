@@ -133,7 +133,7 @@ func TestHubMarksStandOut(t *testing.T) {
 
 func TestHubQueuedTurnIsSaid(t *testing.T) {
 	h := hubStep(hubFixture(), core.FocusIndex{At: t0, Index: 1})
-	f := ansi.Strip(HubView(h, "", "", t0, 100, 14).Content)
+	f := ansi.Strip(HubView(h, "", "", t0, 100, 24).Content)
 	if !strings.Contains(f, "waiting for the role's scheduled work") {
 		t.Errorf("the queued turn is not said:\n%s", f)
 	}
@@ -311,7 +311,7 @@ func longRequest(h core.Hub, title string) core.Hub {
 func TestHubLongRequestTitleKeepsTheRoleAndTheOptionsOnScreen(t *testing.T) {
 	title := strings.Repeat("send everything ", 32)[:500]
 	h := longRequest(hubFixture(), title)
-	for _, size := range [][2]int{{40, 16}, {40, 14}, {60, 20}, {100, 24}, {34, 12}} {
+	for _, size := range [][2]int{{40, 26}, {40, 30}, {60, 24}, {100, 30}} {
 		w, rows := size[0], size[1]
 		f := HubView(h, "", "", t0.Add(time.Second), w, rows)
 		got := ansi.Strip(f.Content)
@@ -329,7 +329,7 @@ func TestHubLongRequestTitleKeepsTheRoleAndTheOptionsOnScreen(t *testing.T) {
 		}
 	}
 	// Where it does not fit, the frame says so and names the role.
-	for _, size := range [][2]int{{40, 8}, {40, 5}, {20, 6}, {40, 2}} {
+	for _, size := range [][2]int{{40, 8}, {40, 5}, {20, 6}, {40, 2}, {34, 12}, {40, 16}} {
 		f := HubView(h, "", "", t0.Add(time.Second), size[0], size[1])
 		if !f.TooSmall {
 			t.Errorf("%v: a request cannot be shown whole here:\n%s", size, ansi.Strip(f.Content))
@@ -363,5 +363,78 @@ func TestInlineLongRequestTitleIsBounded(t *testing.T) {
 	all := ansi.Strip(strings.Join(Entries(nil, s.Entries, 80, t0), " "))
 	if !strings.Contains(strings.Join(strings.Fields(all), ""), strings.Join(strings.Fields(title), "")) {
 		t.Errorf("the full title is not reachable:\n%s", all)
+	}
+}
+
+// Whenever the keys that approve are live, the whole request can be read:
+// after v, scrolling brings every line of it on screen. Anything else is
+// "too small". One rule decides (core.RequestFits), whatever the size.
+func TestHubApprovalIsLiveOnlyWhereTheWholeRequestCanBeRead(t *testing.T) {
+	title := strings.Repeat("send everything ", 32)[:500]
+	base := longRequest(hubFixture(), title)
+	live := 0
+	for w := 12; w < 72; w += 7 {
+		for rows := 2; rows <= 46; rows += 2 {
+			f := HubView(base, "", "", t0.Add(time.Second), w, rows)
+			if f.TooSmall {
+				continue
+			}
+			live++
+			h := hubStep(base, core.PermissionShowAll{At: t0})
+			c := h.Focused().State
+			want := Entries(nil, c.Entries[len(c.Entries)-1:], w, t0)
+			// Every line of the request, wherever the view scrolls.
+			seen := map[string]bool{}
+			for scroll := 0; scroll <= HubView(h, "", "", t0.Add(time.Second), w, rows).Max; scroll++ {
+				hs := h
+				hs.Convs = append([]core.Conv(nil), h.Convs...)
+				for i := range hs.Convs {
+					if hs.Convs[i].Role == hs.Focus {
+						hs.Convs[i].State.Transcript.Scroll = scroll
+					}
+				}
+				for _, l := range strings.Split(ansi.Strip(HubView(hs, "", "", t0.Add(time.Second), w, rows).Content), "\n") {
+					seen[strings.TrimSpace(l)] = true
+				}
+			}
+			for _, l := range want {
+				if l = strings.TrimSpace(ansi.Strip(l)); l != "" && !seen[l] {
+					t.Fatalf("%dx%d: approval is live but %q cannot be read", w, rows, l)
+				}
+			}
+		}
+	}
+	if live == 0 {
+		t.Fatal("no size was live: the sweep checks nothing")
+	}
+}
+
+// The list scrolls to keep the selected role in sight, on the narrow list
+// screen and in the sidebar.
+func TestHubListScrollsToTheSelectedRole(t *testing.T) {
+	h := hubStep(core.NewHub(""), core.HubConnected{At: t0}, core.RosterUpdate{At: t0, Roles: rosterFixture()})
+	for i := 0; i < 3; i++ {
+		h = hubStep(h, core.ListMove{At: t0, Delta: 1})
+	}
+	narrow := ansi.Strip(HubView(h, "", "", t0, 39, 7).Content)
+	if !strings.Contains(narrow, "News") || strings.Contains(narrow, "Dev") {
+		t.Errorf("narrow list at 39x7 with the cursor on News:\n%s", narrow)
+	}
+	if n := len(strings.Split(narrow, "\n")); n != 7 {
+		t.Errorf("%d rows", n)
+	}
+	// Back at the first, the first shows.
+	h = hubStep(h, core.ListMove{At: t0, Delta: 1}) // wraps to Dev
+	if top := ansi.Strip(HubView(h, "", "", t0, 39, 7).Content); !strings.Contains(top, "Dev") {
+		t.Errorf("wrapped to Dev, but:\n%s", top)
+	}
+	// The sidebar, with the conversation in focus on the last role.
+	f := hubStep(core.NewHub("news"), core.HubConnected{At: t0}, core.RosterUpdate{At: t0, Roles: rosterFixture()})
+	side := ansi.Strip(HubView(f, "", "", t0, 100, 5).Content)
+	if !strings.Contains(side, "› News") && !strings.Contains(side, "News") {
+		t.Errorf("the sidebar at 100x5 lost the role in focus:\n%s", side)
+	}
+	if strings.Contains(strings.Split(side, "\n")[1], "Dev") {
+		t.Errorf("the sidebar did not scroll:\n%s", side)
 	}
 }

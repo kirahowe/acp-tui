@@ -696,16 +696,19 @@ func TestPasteGoesAsResource(t *testing.T) {
 	}
 }
 
-// Ctrl-Y arms the next paste to go in as trusted text; the status line
-// shows it, and the transcript says it was not labelled.
+// A paste is untrusted when it arrives. Ctrl-Y marks the latest one in
+// the input as trusted: the placeholder says so, and it goes as plain
+// text, with a note in the transcript.
 func TestTrustedPaste(t *testing.T) {
 	h := startWith(t, "simple.jsonl", 80, 24, "", "-embedded")
 	h.waitIdle()
-	h.keys("\x19")
-	h.waitScreen("the armed toggle", func(s string) bool { return strings.Contains(s, "[next paste: trusted]") })
+	h.keys("\x19") // nothing to trust yet
+	h.waitScreen("the word", func(s string) bool { return strings.Contains(s, "no untrusted paste in the input to trust") })
 	h.keys(bracketed("trusted text"))
-	h.waitScreen("the text", func(s string) bool {
-		return strings.Contains(s, "trusted text") && !strings.Contains(s, "[next paste: trusted]")
+	h.waitScreen("the placeholder", func(s string) bool { return strings.Contains(s, "untrusted #1]") })
+	h.keys("\x19")
+	h.waitScreen("trusted", func(s string) bool {
+		return strings.Contains(s, "[pasted 1 line · trusted #1]") && !strings.Contains(s, "untrusted #1]")
 	})
 	h.keys("\r")
 	h.waitAll("Hello there.")

@@ -40,7 +40,7 @@ type StatusLine struct {
 	HasContext bool
 	Spend      *Cost  // what the session has cost, once the agent says
 	Labels     Labels // what the session has seen
-	TrustNext  bool   // the next paste goes in as trusted text
+	Message    string // a word that shows for a few seconds
 	Asks       int    // permission requests waiting, including the one on offer
 	// PaneItems is how many items the workspace pane lists. PaneHint says
 	// the pane is a toggled overlay, so the status line names its key.
@@ -56,7 +56,7 @@ type StatusLine struct {
 
 // Status describes s at time now.
 func Status(s State, now time.Time) StatusLine {
-	l := StatusLine{Queued: len(s.Queue), Spend: s.Spend, Labels: s.Labels, Asks: len(s.Asks), TrustNext: s.TrustNext, PaneItems: len(PaneItems(s))}
+	l := StatusLine{Queued: len(s.Queue), Spend: s.Spend, Labels: s.Labels, Asks: len(s.Asks), PaneItems: len(PaneItems(s))}
 	if u := s.Usage; u != nil && u.Size > 0 {
 		l.HasContext = true
 		// used*100 can overflow 64 bits, so multiply into 128.
@@ -68,6 +68,9 @@ func Status(s State, now time.Time) StatusLine {
 		// A request in a conversation whose turn another device runs.
 		l.Kind, l.NoClock = StatusAsking, true
 		return l
+	}
+	if m := s.Message; m.Text != "" && now.Sub(m.At) < MessageFor {
+		l.Message = m.Text
 	}
 	switch s.Phase {
 	case Starting:

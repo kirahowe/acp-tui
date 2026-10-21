@@ -314,37 +314,12 @@ func ReduceHub(h Hub, e Event) (Hub, []Effect) {
 	h.Ended = slices.Clone(h.Ended)
 	h.Blanks = slices.Clone(h.Blanks)
 	r := &hubReducer{h: h}
-	if cancelsTrust(e) {
-		r.clearTrust()
-	}
 	before := h.onScreen()
 	r.apply(e)
+	r.adoptBlanks()
 	r.settle(before, e.at())
 	r.markSeen(e.at())
 	return r.h, r.fx
-}
-
-// cancelsTrust says an event ends a ctrl+y trust for the next paste: any
-// key but the paste itself. Events that only report what happened
-// elsewhere do not.
-func cancelsTrust(e Event) bool {
-	switch e.(type) {
-	case Tick, TerminalReady, Printed, HubConnected, RosterUpdate, Routed, Attached, PermissionSettled, Replayed,
-		ConversationEnded, CardsChanged, AgentExited, Pasted, ToggleTrustedPaste, Viewport:
-		return false
-	}
-	return true
-}
-
-// clearTrust disarms a trusted paste everywhere. The trust was for the
-// next paste, whatever becomes of that one.
-func (r *hubReducer) clearTrust() {
-	for i := range r.h.Convs {
-		r.h.Convs[i].State.TrustNext = false
-	}
-	for i := range r.h.Blanks {
-		r.h.Blanks[i].State.TrustNext = false
-	}
 }
 
 // blank is the paste state for a role with no conversation, made when
@@ -359,19 +334,21 @@ func (r *hubReducer) blank(role string) *Blank {
 	return &r.h.Blanks[len(r.h.Blanks)-1]
 }
 
-// adoptBlank gives the conversation just made for a role the pastes
-// waiting for it.
-func (r *hubReducer) adoptBlank(role string) {
-	for i, b := range r.h.Blanks {
-		if b.Role != role {
+// adoptBlanks gives each role that now has a conversation the pastes that
+// waited for it, however the conversation came to be: a message, the
+// roster, --open or a load.
+func (r *hubReducer) adoptBlanks() {
+	for i := len(r.h.Blanks) - 1; i >= 0; i-- {
+		b := r.h.Blanks[i]
+		j := r.convIndex(b.Role)
+		if j < 0 {
 			continue
 		}
-		if j := r.convIndex(role); j >= 0 {
-			s := &r.h.Convs[j].State
+		s := &r.h.Convs[j].State
+		if len(s.Pastes) == 0 && s.NextPaste == 0 {
 			s.Pastes, s.NextPaste = b.State.Pastes, b.State.NextPaste
 		}
 		r.h.Blanks = slices.Delete(r.h.Blanks, i, i+1)
-		return
 	}
 }
 
@@ -404,7 +381,6 @@ func (r *hubReducer) settle(before string, at time.Time) {
 	if after == before {
 		return
 	}
-	r.clearTrust()
 	if i := r.sessionIndex(before); i >= 0 {
 		r.toConv(i, Blurred{At: at}, false)
 	}
@@ -545,12 +521,9 @@ func (r *hubReducer) apply(e Event) {
 		if !h.TooSmall {
 			r.toFocused(e)
 		}
-	case Pasted, ToggleTrustedPaste:
+	case Pasted, TrustPaste:
 		if h.Help || h.EndAsk || h.List || h.Focus == "" {
-			if _, pasted := e.(Pasted); pasted {
-				r.clearTrust() // dropped, and the trust was for it
-			}
-			return
+			return // not at the input
 		}
 		if h.Focused() != nil {
 			r.toFocused(e)
@@ -561,9 +534,13 @@ func (r *hubReducer) apply(e Event) {
 		var fx []Effect
 		b.State, fx = Reduce(b.State, e)
 		for _, f := range fx {
-			if in, ok := f.(InsertInput); ok {
-				r.emit(in)
+			switch f.(type) {
+			case InsertInput, ReplaceInput:
+				r.emit(f)
 			}
+		}
+		if m := b.State.Message; m.Text != "" && m.At.Equal(e.at()) {
+			h.Notice = m.Text
 		}
 	case Submit:
 		if strings.TrimSpace(e.Text) == "" || h.Focus == "" || h.List {
@@ -571,8 +548,8 @@ func (r *hubReducer) apply(e Event) {
 		}
 		if h.Focused() == nil {
 			r.ensureAttached(h.Focus, true)
-			r.adoptBlank(h.Focus)
 		}
+		r.adoptBlanks() // the pastes must be in before the message resolves
 		r.toFocused(e)
 	case Interrupt:
 		r.interrupt(e)
@@ -611,7 +588,7 @@ func (r *hubReducer) mapEffect(c Conv, f Effect, user bool) {
 	switch f := f.(type) {
 	case AnswerPermission:
 		r.emit(f)
-	case InsertInput, RestoreInput:
+	case InsertInput, RestoreInput, ReplaceInput:
 		if c.Role == r.h.Focus && c.Role != "" {
 			r.emit(f)
 		} else if ri, ok := f.(RestoreInput); ok {

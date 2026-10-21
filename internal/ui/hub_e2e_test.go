@@ -461,3 +461,19 @@ func TestHubTooSmallWindowCannotApprove(t *testing.T) {
 		t.Fatalf("approved in a window too small to read the request: %v", got)
 	}
 }
+
+// Ctrl-Y in a hub conversation marks the latest paste as trusted, after
+// the fact, and a paste is untrusted whenever it arrives.
+func TestHubCtrlYTrustsTheLatestPasteInTheInput(t *testing.T) {
+	h := startHub(t, threeRoles(), 100, 24, "dev")
+	h.waitScreen("dev", contains("hello from dev"))
+	h.keys("\x19")
+	h.waitScreen("nothing to trust", contains("no untrusted paste in the input to trust"))
+	h.keys(bracketed("first"))
+	h.keys(bracketed("second"))
+	h.waitScreen("two placeholders", func(s string) bool { return strings.Contains(s, "untrusted #2]") })
+	h.keys("\x19")
+	h.waitScreen("only the latest", func(s string) bool {
+		return strings.Contains(s, "trusted #2]") && !strings.Contains(s, "untrusted #2]") && strings.Contains(s, "untrusted #1]")
+	})
+}

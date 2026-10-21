@@ -26,7 +26,7 @@ const (
 	EOF                        // Ctrl-D on an empty input
 	ShowTools                  // Ctrl-T: the transcript, with tool calls in full
 	ShowThinking               // Ctrl-O: the transcript, with thinking in full
-	TrustPaste                 // Ctrl-Y: the next paste goes in as trusted text
+	TrustPaste                 // Ctrl-Y: trust the latest paste in the input
 	TogglePane                 // Ctrl-X: focus the workspace pane
 	Help                       // ? on an empty input, or Ctrl-/: the list of keys
 	Move                       // in the transcript: scroll, or leave

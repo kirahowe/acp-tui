@@ -171,12 +171,15 @@ func (m *Model) hubKeyBody(k tea.KeyPressMsg, now time.Time) ([]core.Event, tea.
 	}
 	st := m.focusedState()
 	// Scrolling is never the request's: a long one is read by scrolling to
-	// what `v` put in the transcript. Only the approval keys are its.
-	switch k.String() {
-	case "pgup":
-		return one(m.scroll(core.TranscriptPageUp, now))
-	case "pgdown":
-		return one(m.scroll(core.TranscriptPageDown, now))
+	// what `v` put in the transcript. Only the approval keys are its. The
+	// workspace pane, when it has the focus, scrolls itself with these.
+	if !st.Pane.Focus {
+		switch k.String() {
+		case "pgup":
+			return one(m.scroll(core.TranscriptPageUp, now))
+		case "pgdown":
+			return one(m.scroll(core.TranscriptPageDown, now))
+		}
 	}
 	if len(st.Asks) > 0 {
 		if e := askKey(ClassifyAsk(k), now); e != nil {
@@ -219,7 +222,7 @@ func (m *Model) hubKeyBody(k tea.KeyPressMsg, now time.Time) ([]core.Event, tea.
 	case Help:
 		return one(core.ToggleHelp{At: now})
 	case TrustPaste:
-		return one(core.ToggleTrustedPaste{At: now})
+		return one(core.TrustPaste{At: now, Draft: m.input.Value()})
 	case TogglePane:
 		return one(core.PaneKey{At: now, Action: core.PaneToggle})
 	}
