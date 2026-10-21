@@ -64,7 +64,8 @@ type Conv struct {
 	// InRoster says the roster has listed the session. A listed session
 	// the roster stops listing has ended.
 	InRoster bool
-	// Loaded says relay has finished the replay (_relay/replayed).
+	// Loaded says relay has finished the replay (_relay/replayed), or a
+	// turn of ours has ended, so what is on screen is the latest.
 	Loaded bool
 	// Closed says what was left open by the replay has been closed, once
 	// the roster reported the conversation idle.
@@ -95,6 +96,10 @@ type Hub struct {
 	// EndAsk says the operator is being asked to confirm ending Focus's
 	// conversation. Ending says the request is out.
 	EndAsk, Ending bool
+	// EndSession is the session the question is about. It is asked for
+	// that conversation only: if the role's conversation is another by the
+	// time the answer comes, the question is dropped.
+	EndSession string
 	// Ended are the sessions this client ended, so a roster that still
 	// lists one is not taken for a new conversation.
 	Ended []string
@@ -296,9 +301,48 @@ func ReduceHub(h Hub, e Event) (Hub, []Effect) {
 	h.Convs = slices.Clone(h.Convs)
 	h.Ended = slices.Clone(h.Ended)
 	r := &hubReducer{h: h}
+	before := h.onScreen()
 	r.apply(e)
+	r.settle(before, e.at())
 	r.markSeen(e.at())
 	return r.h, r.fx
+}
+
+// onScreen is the session of the conversation the operator can see the
+// whole of: in focus and not behind the list, the help or the end
+// question. It is "" when there is none.
+func (h Hub) onScreen() string {
+	c := h.Focused()
+	if c == nil || h.List || h.EndAsk || h.Help {
+		return ""
+	}
+	return c.Session
+}
+
+// settle acts on what a transition did to what is on screen, whatever
+// caused it: a request that has just come into view starts its delay
+// afresh, so a key typed for something else cannot answer it, and a trust
+// confirmation in a conversation that has left the screen is dropped.
+// Doing it here, on the change, means no way of covering and uncovering a
+// conversation can skip it.
+func (r *hubReducer) settle(before string, at time.Time) {
+	h := &r.h
+	if h.EndAsk {
+		if c := h.Focused(); c == nil || c.Session != h.EndSession {
+			h.EndAsk = false
+			h.Notice = "the conversation changed, so it was not ended"
+		}
+	}
+	after := h.onScreen()
+	if after == before {
+		return
+	}
+	if i := r.sessionIndex(before); i >= 0 {
+		r.toConv(i, Blurred{At: at}, false)
+	}
+	if i := r.sessionIndex(after); i >= 0 && len(h.Convs[i].State.Asks) > 0 {
+		r.toConv(i, Focused{At: at}, false)
+	}
 }
 
 type hubReducer struct {
@@ -413,20 +457,25 @@ func (r *hubReducer) apply(e Event) {
 			r.ensureAttached(h.Focus, true)
 		}
 	case AskEnd:
-		if c := h.Focused(); c != nil && c.Attached && !h.Ending && !h.List {
-			h.EndAsk = true
+		if c := h.Focused(); c != nil && c.Attached && c.Session != "" && !h.Ending && !h.List {
+			h.EndAsk, h.EndSession = true, c.Session
 		}
 	case ConfirmEnd:
 		if !h.EndAsk {
 			return
 		}
 		h.EndAsk = false
-		if c := h.Focused(); e.Yes && c != nil && c.Session != "" {
+		if c := h.Focused(); e.Yes && c != nil && c.Session != "" && c.Session == h.EndSession {
 			h.Ending = true
 			r.emit(EndConversation{Session: c.Session})
 		}
 	case ToggleHelp:
 		h.Help = !h.Help
+	case Pasted, ToggleTrustedPaste:
+		if h.Help || h.EndAsk {
+			return // not at the input; the trust of an armed paste is spent as in a single session
+		}
+		r.toFocused(e)
 	case Submit:
 		if strings.TrimSpace(e.Text) == "" || h.Focus == "" || h.List {
 			return
@@ -597,7 +646,9 @@ func (r *hubReducer) ensureAttached(role string, force bool) {
 		return
 	}
 	if rl := h.RoleByID(role); rl != nil && rl.Conv != nil && !slices.Contains(h.Ended, rl.Conv.Session) {
-		h.Convs = append(h.Convs, newConv(rl.Conv.Session, role))
+		c := newConv(rl.Conv.Session, role)
+		c.InRoster = true // the roster is where the session came from
+		h.Convs = append(h.Convs, c)
 		r.emit(Attach{Role: role, Session: rl.Conv.Session})
 		return
 	}
@@ -621,6 +672,12 @@ func (r *hubReducer) routed(e Routed) {
 	// More of the conversation has come in, so whatever the roster said
 	// about it closing is out of date until the roster says it again.
 	r.h.Convs[i].Closed = false
+	switch e.Event.(type) {
+	case PromptDone, PromptFailed:
+		// A turn this client ran was seen live; a fresh conversation has no
+		// replay to wait for.
+		r.h.Convs[i].Loaded = true
+	}
 	r.toConv(i, e.Event, false)
 }
 
@@ -665,6 +722,9 @@ func (r *hubReducer) attached(e Attached) {
 	}
 	c := &h.Convs[bySession]
 	c.Role, c.Attached = e.Role, true
+	if rl := h.RoleByID(e.Role); rl != nil && rl.Conv != nil && rl.Conv.Session == e.Session {
+		c.InRoster = true // the roster already lists it
+	}
 	r.toConv(bySession, ConvAttached{At: e.At, Embedded: h.Embedded}, false)
 	if e.Role == h.Focus {
 		r.toConv(bySession, Focused{At: e.At}, false)
@@ -785,7 +845,8 @@ func (r *hubReducer) markSeen(time.Time) {
 	}
 	c := &h.Convs[i]
 	rc := rl.Conv
-	if !c.Attached || c.Session != rc.Session || c.State.Phase == Exited || c.State.Transcript.Scroll != 0 ||
+	if !c.Attached || !c.Loaded || h.Help || h.EndAsk || c.State.Pane.Focus ||
+		c.Session != rc.Session || c.State.Phase == Exited || c.State.Transcript.Scroll != 0 ||
 		!rc.Unread || rc.Turn != TurnIdle || rc.Turns <= c.SeenSent {
 		return
 	}

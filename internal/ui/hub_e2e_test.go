@@ -402,3 +402,20 @@ func TestHubScrollsTheConversation(t *testing.T) {
 	h.keys("\x1b[6~") // page down
 	h.waitScreen("back at the end", contains("reply number Db"))
 }
+
+// With the pane beside the conversation (160 columns) the text area is as
+// wide as the box drawn, so a long draft wraps and every character shows.
+func TestHubLongDraftIsAllVisibleWithThePaneBeside(t *testing.T) {
+	h := startHub(t, threeRoles(), 160, 24, "dev")
+	h.waitScreen("dev", contains("hello from dev"))
+	h.keys(strings.Repeat("z", 100))
+	h.waitScreen("the draft", func(s string) bool { return count(s, "z") == 100 })
+}
+
+// A paste in a hub conversation becomes an untrusted placeholder.
+func TestHubPasteBecomesAnUntrustedPlaceholder(t *testing.T) {
+	h := startHub(t, threeRoles(), 100, 24, "dev")
+	h.waitScreen("dev", contains("hello from dev"))
+	h.keys("\x1b[200~line one\nline two\x1b[201~")
+	h.waitScreen("the placeholder", contains("untrusted #1"))
+}

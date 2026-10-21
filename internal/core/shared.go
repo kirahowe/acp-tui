@@ -39,6 +39,10 @@ type (
 	// ReplayEnd says relay has sent all of the replay (_relay/replayed).
 	// Calls the replay left open will not finish, so they stop.
 	ReplayEnd struct{ At time.Time }
+	// Blurred says the conversation has left the screen, or been covered.
+	// A trust confirmation waiting in its pane is dropped: the operator
+	// starts it again on purpose.
+	Blurred struct{ At time.Time }
 	// Focused says the conversation has just come on screen. A request
 	// on offer is armed afresh, as if it had just arrived.
 	Focused struct{ At time.Time }
@@ -49,6 +53,7 @@ func (e ConvAttached) at() time.Time { return e.At }
 func (e Settled) at() time.Time      { return e.At }
 func (e RemoteIdle) at() time.Time   { return e.At }
 func (e ReplayEnd) at() time.Time    { return e.At }
+func (e Blurred) at() time.Time      { return e.At }
 func (e Focused) at() time.Time      { return e.At }
 
 func (r *reducer) shared(e Event) {
@@ -114,6 +119,10 @@ func (r *reducer) shared(e Event) {
 					}
 				}
 			}
+		}
+	case Blurred:
+		if t := s.Pane.Trust; t != nil && !t.Sent {
+			s.Pane.Trust = nil
 		}
 	case Focused:
 		r.next(e.At)

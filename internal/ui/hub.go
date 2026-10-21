@@ -22,7 +22,6 @@ func (m Model) updateHub(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 		m.input.MaxHeight = max(m.h/2-2, 1)
-		m.input.SetWidth(render.InputWidth(render.HubMainWidth(m.width())))
 		m.sized = true
 	case tea.KeyboardEnhancementsMsg:
 		m.caps.Disambiguation = msg.SupportsKeyDisambiguation()
@@ -52,6 +51,9 @@ func (m Model) updateHub(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.swapDraft(before)
+	// The text area is the inside of the box drawn, whatever the layout is
+	// now: the pane beside it, the sidebar, a narrow screen.
+	m.input.SetWidth(render.HubInputWidth(m.hub, m.width()))
 	cmds = append(cmds, m.hubTick(now), m.stop())
 	return m, tea.Batch(cmds...)
 }

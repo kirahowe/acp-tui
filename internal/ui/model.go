@@ -140,7 +140,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if em, ok := msg.(EventMsg); ok {
 		if _, ok := em.Event.(core.HubConnected); ok && !m.hubMode {
 			m.hubMode, m.hub = true, core.NewHub(m.open)
-			m.input.SetWidth(render.InputWidth(render.HubMainWidth(m.width())))
+			m.input.SetWidth(render.HubInputWidth(m.hub, m.width()))
 		}
 	}
 	if m.hubMode {

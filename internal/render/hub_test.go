@@ -240,3 +240,60 @@ func TestHubShowsTheSessionsLabels(t *testing.T) {
 		}
 	}
 }
+
+// Role titles are text from outside the session's trust: they are shown
+// as session text is, by the role's labels.
+func TestHubRoleTitlesFollowTheirLabels(t *testing.T) {
+	title := "Evil https://e.test/?k=secret ‮​\x1b[31m end"
+	roles := []core.Role{{ID: "evil", Title: title, Labels: core.Labels{Private: true, Contaminated: true}}}
+	h := hubStep(core.NewHub(""), core.HubConnected{At: t0}, core.RosterUpdate{At: t0, Roles: roles})
+	check := func(name, got string) {
+		t.Helper()
+		if strings.Contains(got, "https://e.test") {
+			t.Errorf("%s: a live link:\n%s", name, got)
+		}
+		if strings.Contains(got, "‮") || strings.Contains(got, "​") || strings.Contains(got, "\x1b[31m") {
+			t.Errorf("%s: an invisible or control character got through: %q", name, got)
+		}
+		if !strings.Contains(ansi.Strip(got), "hxxps://e[.]test") {
+			t.Errorf("%s: the title is not shown defanged:\n%s", name, ansi.Strip(got))
+		}
+	}
+	check("sidebar", HubView(hubStep(h, core.ListOpen{At: t0}), "", "", t0, 140, 10).Content)
+	// The list screen (narrow) shows it and its labels.
+	list := HubView(h, "", "", t0, 120+1, 10).Content
+	check("list", list)
+	narrowList := HubView(h, "", "", t0, 60, 10).Content
+	check("narrow list", narrowList)
+	if p := ansi.Strip(narrowList); !strings.Contains(p, "contaminated") || !strings.Contains(p, "private") {
+		t.Errorf("the list does not say what the labels are:\n%s", p)
+	}
+	conv := hubStep(h, core.FocusIndex{At: t0, Index: 0})
+	f := HubView(conv, "", "", t0, 140, 10).Content
+	check("header", f)
+	if !strings.Contains(f, "contaminated") || !strings.Contains(f, "[private]") {
+		t.Errorf("the header lacks the role's labels:\n%s", ansi.Strip(f))
+	}
+	// A role the roster does not know is the command line's word.
+	h2 := hubStep(core.NewHub("https://x.test/‮"), core.HubConnected{At: t0})
+	if g := HubView(h2, "", "", t0, 100, 8).Content; strings.Contains(g, "https://x.test") || strings.Contains(g, "‮") {
+		t.Errorf("an unlisted name: %q", g)
+	}
+}
+
+// The text area is the inside of the box that is drawn, in every layout.
+func TestHubInputWidthIsTheBoxDrawn(t *testing.T) {
+	h := hubFixture()
+	for _, w := range []int{30, 60, 71, 72, 99, 150, 158, 159, 200} {
+		iw := HubInputWidth(h, w)
+		line := strings.Repeat("x", iw)
+		got := ansi.Strip(HubView(h, line, "", t0, w, 20).Content)
+		if !strings.Contains(got, line) {
+			t.Errorf("%d wide: a %d wide input line is cut:\n%s", w, iw, got)
+		}
+		// And no wider than the box: one more would be cut.
+		if strings.Contains(got, line+"x") {
+			t.Errorf("%d wide: the box is wider than the text area (%d)", w, iw)
+		}
+	}
+}

@@ -81,6 +81,26 @@ var hubLegend = []string{
 	"▶ replying   … waiting for scheduled work",
 	"~ scheduled work runs   ● unread",
 	"?N requests to answer   !N held calls",
+	"p private   c contaminated",
+}
+
+// roleName is a role's title as text that may be shown: its controls and
+// invisible characters made visible and, when the role's labels say it has
+// seen untrusted content, its links defanged, as other text from the
+// session is.
+func roleName(r core.Role) string { return paneLine(r.Title, r.Labels.Contaminated) }
+
+// roleBadges are a role's labels beside its name, as the status line
+// shows a session's.
+func roleBadges(l core.Labels) string {
+	var b string
+	if l.Private {
+		b += " " + styled(bold, "[private]")
+	}
+	if l.Contaminated {
+		b += " " + styled(bold|reverse, " contaminated ")
+	}
+	return b
 }
 
 // marks are the indicators beside a role, styled, and their width. They
@@ -107,6 +127,12 @@ func marks(h core.Hub, r core.Role, now time.Time) string {
 	if r.Working {
 		parts = append(parts, "~")
 	}
+	if r.Labels.Contaminated {
+		parts = append(parts, styled(bold|reverse, "c"))
+	}
+	if r.Labels.Private {
+		parts = append(parts, styled(bold, "p"))
+	}
 	return strings.Join(parts, " ")
 }
 
@@ -121,7 +147,7 @@ func roleRow(h core.Hub, r core.Role, now time.Time, width int) string {
 	m := marks(h, r, now)
 	mw := ansi.StringWidth(m)
 	room := max(width-2-mw-1, 1)
-	title := truncate(oneLine(r.Title), room)
+	title := truncate(roleName(r), room)
 	if r.Conv == nil {
 		title = styled(faint, title)
 	}
@@ -159,6 +185,12 @@ func describe(h core.Hub, r core.Role, now time.Time) string {
 	}
 	if r.Working {
 		parts = append(parts, "scheduled work runs")
+	}
+	if r.Labels.Private {
+		parts = append(parts, "private")
+	}
+	if r.Labels.Contaminated {
+		parts = append(parts, "contaminated")
 	}
 	if r.Holds > 0 {
 		parts = append(parts, plural(r.Holds, "held call"))
@@ -221,6 +253,22 @@ func listScreen(h core.Hub, now time.Time, width, height int) []string {
 		lines = append(lines, "")
 	}
 	return append(lines, foot)
+}
+
+// HubInputWidth is the width of the input box that HubView draws at
+// width: the text area must be the box's inside, or text typed past it
+// would be out of sight.
+func HubInputWidth(h core.Hub, width int) int {
+	w := width
+	if HubWide(width) {
+		w = HubMainWidth(width)
+	} else if h.List || h.Focus == "" {
+		return InputWidth(width)
+	}
+	if h.Focused() != nil && Side(w) {
+		w = MainWidth(w)
+	}
+	return InputWidth(w)
 }
 
 // HubView draws the whole screen at width, height rows. input is the text
@@ -324,11 +372,14 @@ func hubMainAt(h core.Hub, input, hint string, now time.Time, width, height int,
 	}
 
 	// The header.
-	title := h.Focus
+	title := paneLine(h.Focus, true) // a name that came from the command line, not the config
 	if role != nil {
-		title = role.Title
+		title = roleName(*role)
 	}
-	head := styled(bold, oneLine(title))
+	head := styled(bold, title)
+	if role != nil {
+		head += roleBadges(role.Labels)
+	}
 	if narrow {
 		head = styled(faint, "‹ ctrl+g roles · ") + head
 		if e := elsewhere(h); e != "" {
@@ -359,7 +410,7 @@ func hubMainAt(h core.Hub, input, hint string, now time.Time, width, height int,
 	showInput := false
 	switch {
 	case h.EndAsk:
-		ask := fmt.Sprintf("End the conversation with %s? y to end it, n to keep it", oneLine(title))
+		ask := fmt.Sprintf("End the conversation with %s? y to end it, n to keep it", title)
 		bottom = append(bottom, box("end conversation", wrap(ask, InputWidth(width)), width)...)
 	case len(s.Asks) > 0:
 		bottom = append(bottom, permissionBox(s, now, width, height-1-len(bottom)-2)...)
@@ -396,7 +447,7 @@ func hubMainAt(h core.Hub, input, hint string, now time.Time, width, height int,
 	case s.Pane.Focus && conv != nil && len(s.Asks) == 0 && !beside:
 		lines, detailMax = paneRender(s, now, width, room)
 	case conv == nil:
-		lines = []string{styled(faint, "No conversation with "+oneLine(title)+" yet.")}
+		lines = []string{styled(faint, "No conversation with "+title+" yet.")}
 	default:
 		ex := expand{tools: s.Transcript.Tools, thinking: s.Transcript.Thinking}
 		lines = entriesAs(nil, s.Entries, ex, width, now)

@@ -70,7 +70,7 @@ func (InsertInput) effect() {}
 
 func (r *reducer) pasted(e Pasted) {
 	s := &r.s
-	if s.Phase == Exited || len(s.Asks) > 0 || s.Pane.Focus || s.Transcript.Open {
+	if s.Phase == Exited || len(s.Asks) > 0 || s.Pane.Focus || (s.Transcript.Open && !s.Shared) {
 		// Nothing pasted while a request waits or something else has the
 		// keys goes anywhere. It uses up an armed trust all the same: the
 		// trust was for this block, not for whatever is pasted next.

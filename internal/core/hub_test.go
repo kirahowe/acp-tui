@@ -204,6 +204,10 @@ func TestHubSeenIsSentOnceWhenTheLatestTurnIsOnScreen(t *testing.T) {
 	r.Conv.Turns, r.Conv.Unread = 2, true
 	h, _ := apply(t, NewHub("dev"), HubConnected{At: t0}, Attached{At: t0, Role: "dev", Session: "s1"})
 	h, fx := apply(t, h, RosterUpdate{At: t0, Roles: []Role{r}})
+	if len(fx) != 0 {
+		t.Fatalf("seen before the replay is over: %v", fx)
+	}
+	h, fx = apply(t, h, Replayed{At: t0, Session: "s1"})
 	if !slices.Contains(fx, Effect(SendSeen{Session: "s1", Turn: 2})) {
 		t.Fatalf("%v", fx)
 	}
@@ -669,5 +673,231 @@ func TestHubLateUpdateForAStoppedCallAddsNothing(t *testing.T) {
 		routed("s1", ToolUpdated{At: t0, ID: "t", Status: statusp(Failed)}))
 	if len(toolCalls(h)) != 1 {
 		t.Fatalf("a second call: %+v", toolCalls(h))
+	}
+}
+
+// --- Codex round 1
+
+func loadedHub(t testing.TB, roles ...Role) Hub {
+	t.Helper()
+	if len(roles) == 0 {
+		roles = []Role{role("dev", "s1"), role("mail", "s2")}
+	}
+	h, _ := apply(t, NewHub("dev"), HubConnected{At: t0}, RosterUpdate{At: t0, Roles: roles},
+		Attached{At: t0, Role: "dev", Session: "s1"}, Replayed{At: t0, Session: "s1"})
+	return h
+}
+
+func answerCount(fx []Effect) int {
+	n := 0
+	for _, f := range fx {
+		if _, ok := f.(AnswerPermission); ok {
+			n++
+		}
+	}
+	return n
+}
+
+// However a conversation is covered and uncovered, a request that comes
+// into view starts its delay afresh: a y typed right behind the key that
+// uncovered it answers nothing.
+func TestHubEveryUncoveringArmsRequestsAgain(t *testing.T) {
+	ask := PermissionAsked{At: t0, Permission: Permission{ID: 4, CallID: "c", Options: []PermOption{{ID: "a", Kind: AllowOnce}, {ID: "r", Kind: RejectOnce}}}}
+	paths := map[string][2][]Event{
+		"list": {{ToggleList{}}, {ToggleList{}}},
+		"end":  {{AskEnd{}}, {ConfirmEnd{Yes: false}}},
+		"help": {{ToggleHelp{}}, {ToggleHelp{}}},
+	}
+	for name, p := range paths {
+		t.Run(name, func(t *testing.T) {
+			at := func(d time.Duration, es []Event) []Event {
+				var out []Event
+				for _, e := range es {
+					switch e := e.(type) {
+					case ToggleList:
+						e.At = t0.Add(d)
+						out = append(out, e)
+					case AskEnd:
+						e.At = t0.Add(d)
+						out = append(out, e)
+					case ConfirmEnd:
+						e.At = t0.Add(d)
+						out = append(out, e)
+					case ToggleHelp:
+						e.At = t0.Add(d)
+						out = append(out, e)
+					}
+				}
+				return out
+			}
+			h := loadedHub(t)
+			h, _ = apply(t, h, routed("s1", ask))
+			h, _ = apply(t, h, at(time.Second, p[0])...)
+			h, _ = apply(t, h, at(time.Hour, p[1])...)
+			_, fx := apply(t, h, PermissionQuick{At: t0.Add(time.Hour + time.Millisecond), Kind: AllowOnce})
+			if answerCount(fx) != 0 {
+				t.Fatalf("answered %v", fx)
+			}
+			_, fx = apply(t, h, PermissionQuick{At: t0.Add(time.Hour + 700*time.Millisecond), Kind: AllowOnce})
+			if answerCount(fx) != 1 {
+				t.Fatalf("not answerable once armed: %v", fx)
+			}
+		})
+	}
+}
+
+func TestHubTrustConfirmationDoesNotSurviveLeavingTheScreen(t *testing.T) {
+	for name, leave := range map[string]Event{"switch": FocusIndex{At: t0, Index: 1}, "list": ToggleList{At: t0}, "help": ToggleHelp{At: t0}, "end": AskEnd{At: t0}} {
+		t.Run(name, func(t *testing.T) {
+			h := loadedHub(t)
+			h.Convs = slices.Clone(h.Convs)
+			h.Convs[0].State.Pane.Trust = &TrustPrompt{Since: t0}
+			h, _ = apply(t, h, leave)
+			if h.Convs[0].State.Pane.Trust != nil {
+				t.Fatal("the confirmation is still there")
+			}
+		})
+	}
+	// One already sent stays: its answer is still due.
+	h := loadedHub(t)
+	h.Convs = slices.Clone(h.Convs)
+	h.Convs[0].State.Pane.Trust = &TrustPrompt{Since: t0, Sent: true}
+	h, _ = apply(t, h, ToggleList{At: t0})
+	if h.Convs[0].State.Pane.Trust == nil {
+		t.Fatal("a sent trust was dropped")
+	}
+}
+
+func TestHubLoadedFromTheRosterCountsAsListed(t *testing.T) {
+	h, _ := apply(t, NewHub(""), HubConnected{At: t0}, RosterUpdate{At: t0, Roles: []Role{role("dev", "s1")}}, ListOpen{At: t0})
+	h, _ = apply(t, h, Attached{At: t0, Role: "dev", Session: "s1"})
+	h, _ = apply(t, h, RosterUpdate{At: t0, Roles: []Role{role("dev", "s2")}})
+	if c := h.ConvBySession("s1"); c != nil {
+		t.Fatalf("the replaced session is still attached: %+v", c)
+	}
+}
+
+func TestHubEndQuestionIsAboutOneSession(t *testing.T) {
+	h := loadedHub(t)
+	h, _ = apply(t, h, AskEnd{At: t0})
+	if !h.EndAsk || h.EndSession != "s1" {
+		t.Fatalf("%+v", h)
+	}
+	// Another device ends it and starts a new one.
+	h, _ = apply(t, h, RosterUpdate{At: t0, Roles: []Role{role("dev", "s9"), role("mail", "s2")}})
+	if h.EndAsk {
+		t.Fatal("the question outlived its conversation")
+	}
+	h, _ = apply(t, h, Attached{At: t0, Role: "dev", Session: "s9"})
+	_, fx := apply(t, h, ConfirmEnd{At: t0, Yes: true})
+	for _, f := range fx {
+		if e, ok := f.(EndConversation); ok {
+			t.Fatalf("ended %s", e.Session)
+		}
+	}
+	// And with the question open when the session is replaced under it.
+	h = loadedHub(t)
+	h, _ = apply(t, h, AskEnd{At: t0})
+	h.Convs = slices.Clone(h.Convs)
+	h.Convs[0].Session = "s9" // the focused conversation is another one now
+	_, fx = apply(t, h, ConfirmEnd{At: t0, Yes: true})
+	for _, f := range fx {
+		if e, ok := f.(EndConversation); ok {
+			t.Fatalf("ended %s", e.Session)
+		}
+	}
+}
+
+func TestHubPastesWorkInAConversation(t *testing.T) {
+	h := loadedHub(t)
+	h, fx := apply(t, h, Pasted{At: t0, Text: "an email\nwith lines"})
+	var ins []InsertInput
+	for _, f := range fx {
+		if i, ok := f.(InsertInput); ok {
+			ins = append(ins, i)
+		}
+	}
+	if len(ins) != 1 || !strings.Contains(ins[0].Text, "untrusted") || len(h.Convs[0].State.Pastes) != 1 {
+		t.Fatalf("%v %+v", fx, h.Convs[0].State.Pastes)
+	}
+	// It goes out as an attachment.
+	h, fx = apply(t, h, Submit{At: t0, Text: ins[0].Text})
+	var sent *SendPrompt
+	for _, f := range fx {
+		if fs, ok := f.(ForSession); ok {
+			if sp, ok := fs.Effect.(SendPrompt); ok {
+				sent = &sp
+			}
+		}
+	}
+	if sent == nil || len(sent.Attachments) != 1 && h.Embedded {
+		t.Fatalf("%v", fx)
+	}
+	// Trusted paste.
+	h = loadedHub(t)
+	_, fx = apply(t, h, ToggleTrustedPaste{At: t0}, Pasted{At: t0, Text: "plain"})
+	if !slices.Contains(fx, Effect(InsertInput{Text: "plain"})) {
+		t.Fatalf("trusted paste: %v", fx)
+	}
+	// Under the help, nothing goes in.
+	_, fx = apply(t, h, ToggleHelp{At: t0}, Pasted{At: t0, Text: "x"})
+	for _, f := range fx {
+		if _, ok := f.(InsertInput); ok {
+			t.Fatal("pasted under the help")
+		}
+	}
+}
+
+func TestHubSeenWaitsForEverythingThatCoversTheConversation(t *testing.T) {
+	r := role("dev", "s1")
+	r.Conv.Turns, r.Conv.Unread = 2, true
+	base := func() Hub {
+		h, _ := apply(t, NewHub("dev"), HubConnected{At: t0}, Attached{At: t0, Role: "dev", Session: "s1"})
+		return h
+	}
+	hasSeen := func(fx []Effect) bool {
+		for _, f := range fx {
+			if _, ok := f.(SendSeen); ok {
+				return true
+			}
+		}
+		return false
+	}
+	// Not before the replay is over, even with a roster that says unread.
+	h, fx := apply(t, base(), RosterUpdate{At: t0, Roles: []Role{r}})
+	if hasSeen(fx) {
+		t.Fatal("seen before the replay")
+	}
+	// Not while covered, and sent the moment it is uncovered.
+	for name, cover := range map[string][2]Event{
+		"help": {ToggleHelp{At: t0}, ToggleHelp{At: t0}},
+		"end":  {AskEnd{At: t0}, ConfirmEnd{At: t0}},
+		"pane": {PaneKey{At: t0, Action: PaneToggle}, PaneKey{At: t0, Action: PaneToggle}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h2, _ := apply(t, base(), cover[0])
+			h2, fx := apply(t, h2, RosterUpdate{At: t0, Roles: []Role{r}}, Replayed{At: t0, Session: "s1"})
+			if hasSeen(fx) {
+				t.Fatalf("seen while covered: %v", fx)
+			}
+			_, fx = apply(t, h2, cover[1])
+			if !hasSeen(fx) {
+				t.Fatalf("not seen once uncovered: %v", fx)
+			}
+		})
+	}
+	_ = h
+}
+
+// The labels at the start of a replay apply before the entries after
+// them, so their URLs are defanged.
+func TestHubReplayLabelsApplyBeforeTheEntriesThatFollow(t *testing.T) {
+	h, _ := apply(t, NewHub("dev"), HubConnected{At: t0}, Attached{At: t0, Role: "dev", Session: "s1"},
+		routed("s1", LabelsSeen{At: t0, Labels: Labels{Private: true, Contaminated: true}}),
+		routed("s1", TextChunk{At: t0, Text: "see https://e.test/x"}),
+		Replayed{At: t0, Session: "s1"})
+	st := h.Convs[0].State
+	if !st.Labels.Contaminated || !st.Entries[0].Defang {
+		t.Fatalf("%+v", st)
 	}
 }
