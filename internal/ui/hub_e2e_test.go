@@ -366,3 +366,39 @@ func TestHubCancelsASlowTurn(t *testing.T) {
 	h.waitLog("cancel fh-dev-1")
 	h.waitScreen("idle", contains("ready"))
 }
+
+func TestHubWorkspacePaneAndBoardWorkForTheFocusedConversation(t *testing.T) {
+	h := startHub(t, threeRoles(), 100, 24, "dev")
+	h.waitScreen("dev", contains("hello from dev"))
+	h.keys("\x18") // ctrl+x
+	h.waitScreen("the pane", contains("nothing yet"))
+	h.keys("b")
+	h.waitScreen("the board", contains("This agent has no board."))
+	h.keys("\x18")
+	h.waitScreen("the conversation", func(s string) bool { return !strings.Contains(s, "nothing yet") })
+	// The pane is the conversation's: another role's has its own.
+	h.keys(ctrlN)
+	s := h.waitScreen("mail", contains("No conversation with Mail"))
+	if strings.Contains(s, "nothing yet") {
+		t.Errorf("the pane followed to another role:\n%s", s)
+	}
+}
+
+func TestHubScrollsTheConversation(t *testing.T) {
+	cfg := threeRoles()
+	var hist []fakehub.Said
+	for i := 0; i < 30; i++ {
+		hist = append(hist, fakehub.Said{User: "q" + string(rune('a'+i%26)) + string(rune('a'+i/26)), Agent: "reply number " + string(rune('A'+i%26)) + string(rune('a'+i/26))})
+	}
+	cfg.Roles[0].Live = &fakehub.Live{Unread: true, History: hist}
+	h := startHub(t, cfg, 100, 24, "dev")
+	h.waitScreen("the end", contains("reply number Db"))
+	h.waitLog("seen fh-dev-1 15")
+	h.keys("\x1b[5~") // page up
+	s := h.waitScreen("scrolled", contains("more"))
+	if strings.Contains(s, "reply number Db") {
+		t.Errorf("the end is still showing:\n%s", s)
+	}
+	h.keys("\x1b[6~") // page down
+	h.waitScreen("back at the end", contains("reply number Db"))
+}

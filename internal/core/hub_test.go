@@ -539,3 +539,17 @@ func TestUserChunkIsHarmlessInSingleSessionMode(t *testing.T) {
 		t.Fatalf("%+v", s)
 	}
 }
+
+// A load that fails is not tried again on every roster that still lists
+// the session.
+func TestHubFailedLoadIsNotRetried(t *testing.T) {
+	h, fx := apply(t, NewHub(""), HubConnected{At: t0}, RosterUpdate{At: t0, Roles: []Role{role("dev", "s1")}}, ListOpen{At: t0})
+	if len(attachesIn(fx)) != 1 {
+		t.Fatalf("%v", fx)
+	}
+	h, _ = apply(t, h, Attached{At: t0, Role: "dev", Session: "s1", Err: "not live"})
+	_, fx = apply(t, h, RosterUpdate{At: t0, Roles: []Role{role("dev", "s1")}})
+	if len(attachesIn(fx)) != 0 {
+		t.Fatalf("tried again: %v", fx)
+	}
+}

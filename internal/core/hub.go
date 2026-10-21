@@ -618,6 +618,10 @@ func (r *hubReducer) attached(e Attached) {
 				r.emit(RestoreInput{Text: strings.Join(q, "\n\n")})
 			}
 		}
+		if e.Session != "" {
+			// Not live any more, whatever a roster still in flight says.
+			h.Ended = append(h.Ended, e.Session)
+		}
 		h.Notice = "could not open the conversation: " + oneLineText(e.Err)
 		return
 	}
