@@ -265,8 +265,9 @@ object at any depth, and names match exactly, case included. Nesting
 stops at 128 levels, a number literal at 1000 characters, and an
 exponent at 9999 either way (by value, so `1e+0009999` passes). Unknown
 members are ignored. `testdata/strict-json/cases.jsonl` is a copy of the
-table of hostile lines shared by the three repos, and the tests run
-every case through acp-tui's reader.
+table of hostile lines shared by the three repos (the source is relay's
+`testdata/strict-json`), and the tests run every case through acp-tui's
+reader.
 
 Each line from the agent goes through `wire.Screen` before the ACP SDK
 sees it. A line that breaks the dialect is dropped. The SDK never sees
