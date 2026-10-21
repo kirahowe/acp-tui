@@ -164,3 +164,79 @@ func TestHubDrawsAConversationBeforeTheRoster(t *testing.T) {
 		}
 	}
 }
+
+// parityState holds one of every kind of entry, a contaminated session
+// and a display in the workspace pane.
+func parityState() core.State {
+	return core.State{
+		Phase: core.Idle, Shared: true, Transcript: core.Transcript{Open: true},
+		Labels: core.Labels{Private: true, Contaminated: true},
+		Entries: []core.Entry{
+			{Kind: core.Banner, Title: "Clerk", Text: "relay 1 · model", Final: true},
+			{Kind: core.User, Text: "Find venues near https://example.com/x", Final: true},
+			{Kind: core.Thought, Text: "thinking about halls", Final: true},
+			{Kind: core.Tool, Calls: []core.Call{{ID: "1", Name: "search", Status: core.OK}, {ID: "2", Name: "fetch", Status: core.Failed, Output: "timed out"}}, Final: true},
+			{Kind: core.Agent, Text: "Found **three** at https://example.com/hall", Final: true, Defang: true},
+			{Kind: core.Note, Text: "! rate limited", Detail: "retrying", Final: true},
+			{Kind: core.Request, Text: "send_mail", Detail: `{"to":"a"}`, Preview: "Will mail a@example.com", PreviewDefang: true, Final: true},
+			{Kind: core.Note, Text: "[max tokens]", Final: true},
+		},
+		Pane: core.Pane{Local: []core.Item{{Kind: core.ShownItem, CallID: "1", Title: "Venues near the hall", Text: "body",
+			Labels: core.Labels{Contaminated: true}}}},
+	}
+}
+
+func hubOf(st core.State) core.Hub {
+	return core.Hub{Connected: true, Focus: "clerk", RosterLoaded: true,
+		Roles: []core.Role{{ID: "clerk", Title: "Clerk"}},
+		Convs: []core.Conv{{Role: "clerk", Session: "s", Attached: true, State: st}}}
+}
+
+// The conversation in hub mode shows every line of text the inline view
+// prints for the same entries, at the same width.
+func TestHubConversationShowsWhatTheInlineViewShows(t *testing.T) {
+	st := parityState()
+	for _, w := range []int{40, 60} {
+		inline := Entries(nil, st.Entries, w, t0)
+		got := ansi.Strip(HubView(hubOf(st), "", "", t0, w, 80).Content)
+		for _, l := range inline {
+			l = strings.TrimSpace(ansi.Strip(l))
+			if l == "" || strings.Trim(l, "╭╮╰╯─│ ") == "" { // blank rows and box edges are chrome
+				continue
+			}
+			if !strings.Contains(got, l) {
+				t.Errorf("%d wide: the inline view prints %q, the hub view does not:\n%s", w, l, got)
+			}
+		}
+	}
+}
+
+// A display is in front of the operator on a wide screen without a key,
+// as in the single-session view, with its untrusted mark.
+func TestHubShowsTheDisplayBesideTheConversation(t *testing.T) {
+	st := parityState()
+	st.Entries = st.Entries[:5]
+	inline := ansi.Strip(View(st, "", "", t0, 159, 50).Content)
+	hub := ansi.Strip(HubView(hubOf(st), "", "", t0, 159, 50).Content)
+	for _, want := range []string{"Venues near the hall", "untrusted"} {
+		if !strings.Contains(inline, want) {
+			t.Fatalf("the inline view lacks %q:\n%s", want, inline)
+		}
+		if !strings.Contains(hub, want) {
+			t.Errorf("the hub view lacks %q:\n%s", want, hub)
+		}
+	}
+	// Narrower than that the pane waits for ctrl+x, as inline.
+	if narrow := ansi.Strip(HubView(hubOf(st), "", "", t0, 99, 50).Content); strings.Contains(narrow, "Venues near the hall") {
+		t.Errorf("the pane stood beside a conversation too narrow for it:\n%s", narrow)
+	}
+}
+
+func TestHubShowsTheSessionsLabels(t *testing.T) {
+	got := ansi.Strip(HubView(hubOf(parityState()), "", "", t0, 60, 40).Content)
+	for _, want := range []string{"[private]", "contaminated", "hxxps://"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lacks %q:\n%s", want, got)
+		}
+	}
+}

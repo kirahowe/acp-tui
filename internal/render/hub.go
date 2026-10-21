@@ -299,6 +299,23 @@ func elsewhere(h core.Hub) string {
 // that takes its place) and the status line. help, when set, covers the
 // bottom of the conversation.
 func hubMain(h core.Hub, input, hint string, now time.Time, width, height int, narrow bool, help []string) HubFrame {
+	// With room for it, the workspace pane stands beside the conversation,
+	// as it does in the single-session view: a display or a held call is
+	// in front of the operator without a key.
+	if c := h.Focused(); c != nil && Side(width) {
+		mw := MainWidth(width)
+		f := hubMainAt(h, input, hint, now, mw, height, narrow, help, true)
+		pane, mx := paneRender(c.State, now, PaneWidth(width), height)
+		f.Content = strings.Join(joinColumns(strings.Split(f.Content, "\n"), pane, mw), "\n")
+		f.DetailMax = mx
+		return f
+	}
+	return hubMainAt(h, input, hint, now, width, height, narrow, help, false)
+}
+
+// hubMainAt draws the conversation at width. beside says the pane is drawn
+// beside it, so it neither covers the conversation nor needs its key named.
+func hubMainAt(h core.Hub, input, hint string, now time.Time, width, height int, narrow bool, help []string, beside bool) HubFrame {
 	role := h.RoleByID(h.Focus)
 	conv := h.Focused()
 	var s core.State
@@ -366,7 +383,7 @@ func hubMain(h core.Hub, input, hint string, now time.Time, width, height int, n
 				st.Remote = role.Conv.Turn
 			}
 		}
-		st.PaneHint = st.PaneItems > 0
+		st.PaneHint = st.PaneItems > 0 && !beside
 		status = StatusText(st, hint, now, width)
 	}
 	bottom = append(bottom, status)
@@ -376,7 +393,7 @@ func hubMain(h core.Hub, input, hint string, now time.Time, width, height int, n
 	var lines []string
 	mx, detailMax := 0, 0
 	switch {
-	case s.Pane.Focus && conv != nil && len(s.Asks) == 0:
+	case s.Pane.Focus && conv != nil && len(s.Asks) == 0 && !beside:
 		lines, detailMax = paneRender(s, now, width, room)
 	case conv == nil:
 		lines = []string{styled(faint, "No conversation with "+oneLine(title)+" yet.")}
