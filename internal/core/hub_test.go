@@ -553,3 +553,65 @@ func TestHubFailedLoadIsNotRetried(t *testing.T) {
 		t.Fatalf("tried again: %v", fx)
 	}
 }
+
+func TestHubReplayedClosesWhatTheReplayLeftOpen(t *testing.T) {
+	h, _ := apply(t, NewHub("dev"), HubConnected{At: t0},
+		routed("s1", ToolStarted{At: t0, ID: "t", Name: "fetch", Status: Running}),
+		Attached{At: t0, Role: "dev", Session: "s1"})
+	h, _ = apply(t, h, Replayed{At: t0, Session: "s1"})
+	c := h.Convs[0]
+	if !c.Loaded {
+		t.Fatal("not marked loaded")
+	}
+	for _, e := range c.State.Entries {
+		for _, call := range e.Calls {
+			if call.Status != Stopped {
+				t.Fatalf("call %+v", call)
+			}
+		}
+	}
+}
+
+// A replay cut anywhere (at a point where no call is open), then the
+// marker, then live updates, is the whole transcript.
+func TestHubReplayMarkerThenLiveEqualsTheWholeTranscript(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		var events []Event
+		safe := []int{0} // cut points with no call open
+		n := rapid.IntRange(1, 20).Draw(t, "n")
+		for i := range n {
+			switch rapid.IntRange(0, 3).Draw(t, "kind") {
+			case 0:
+				events = append(events, routed("s1", UserChunk{At: t0, MessageID: fmt.Sprintf("u%d", i), Text: "q"}))
+			case 1:
+				id := fmt.Sprintf("c%d", i)
+				events = append(events, routed("s1", ToolStarted{At: t0, ID: id, Name: "x", Status: Running}),
+					routed("s1", ToolUpdated{At: t0, ID: id, Status: statusp(OK)}))
+			case 2:
+				events = append(events, routed("s1", ThoughtChunk{At: t0, MessageID: "t", Text: "hm"}))
+			default:
+				events = append(events, routed("s1", TextChunk{At: t0, MessageID: "a", Text: rapid.SampledFrom([]string{"a ", "b\n\n", "c"}).Draw(t, "text")}))
+			}
+			safe = append(safe, len(events))
+		}
+		cut := safe[rapid.IntRange(0, len(safe)-1).Draw(t, "cut")]
+		attach := Attached{At: t0, Role: "dev", Session: "s1"}
+		whole, _ := apply(t, NewHub("dev"), append([]Event{HubConnected{At: t0}, attach}, events...)...)
+		split := append([]Event{HubConnected{At: t0}, attach}, events[:cut]...)
+		split = append(split, Replayed{At: t0, Session: "s1"})
+		split = append(split, events[cut:]...)
+		part, _ := apply(t, NewHub("dev"), split...)
+		w, p := whole.Convs[0].State.Entries, part.Convs[0].State.Entries
+		// Finality is not compared: an entry the marker leaves open is
+		// open in both.
+		if len(w) != len(p) {
+			t.Fatalf("cut %d: %d entries vs %d", cut, len(w), len(p))
+		}
+		for i := range w {
+			w[i].Final, p[i].Final = false, false
+			if !reflect.DeepEqual(w[i], p[i]) {
+				t.Fatalf("cut %d entry %d:\n%+v\n%+v", cut, i, w[i], p[i])
+			}
+		}
+	})
+}

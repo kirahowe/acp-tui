@@ -36,6 +36,9 @@ type (
 	// RemoteIdle says relay reports no turn running in the conversation,
 	// so whatever is still open in it will not change.
 	RemoteIdle struct{ At time.Time }
+	// ReplayEnd says relay has sent all of the replay (_relay/replayed).
+	// Calls the replay left open will not finish, so they stop.
+	ReplayEnd struct{ At time.Time }
 	// Focused says the conversation has just come on screen. A request
 	// on offer is armed afresh, as if it had just arrived.
 	Focused struct{ At time.Time }
@@ -45,6 +48,7 @@ func (e UserChunk) at() time.Time    { return e.At }
 func (e ConvAttached) at() time.Time { return e.At }
 func (e Settled) at() time.Time      { return e.At }
 func (e RemoteIdle) at() time.Time   { return e.At }
+func (e ReplayEnd) at() time.Time    { return e.At }
 func (e Focused) at() time.Time      { return e.At }
 
 func (r *reducer) shared(e Event) {
@@ -91,6 +95,25 @@ func (r *reducer) shared(e Event) {
 	case RemoteIdle:
 		if s.Phase != Busy && s.Phase != Exited {
 			r.closeAll()
+		}
+	case ReplayEnd:
+		// An open reply or thought stays open: the turn may still be
+		// running and its next chunk joins it. The roster going idle
+		// closes those.
+		if s.Phase != Exited {
+			for i := range s.Entries {
+				en := &s.Entries[i]
+				if en.Kind != Tool || en.Final {
+					continue
+				}
+				// Finality is left to the next entry: a run with every call
+				// done still takes the next call.
+				for j := range en.Calls {
+					if !done(en.Calls[j].Status) {
+						en.Calls[j].Status = Stopped
+					}
+				}
+			}
 		}
 	case Focused:
 		r.next(e.At)

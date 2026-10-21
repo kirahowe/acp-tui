@@ -378,7 +378,7 @@ func (r *reducer) apply(e Event) {
 		r.permission(e)
 	case LabelsSeen, PermissionMove, PermissionConfirm, PermissionQuick, PermissionCancel, PermissionShowAll:
 		r.permission(e)
-	case UserChunk, ConvAttached, Settled, RemoteIdle, Focused:
+	case UserChunk, ConvAttached, Settled, RemoteIdle, ReplayEnd, Focused:
 		r.shared(e)
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:
 		if s.Phase == Busy || (s.Shared && s.Phase != Exited) {

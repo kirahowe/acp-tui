@@ -336,6 +336,11 @@ func (c client) HandleExtensionMethod(_ context.Context, method string, params j
 			c.a.emit(e)
 		}
 		return nil, nil
+	case wire.MethodReplayed:
+		if e, ok := wire.Replayed(params, time.Now()); ok && c.a.hub {
+			c.a.emit(e)
+		}
+		return nil, nil
 	case wire.MethodSettled:
 		if e, ok := wire.Settled(params, time.Now()); ok && c.a.hub {
 			c.a.emit(e)

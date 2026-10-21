@@ -82,3 +82,15 @@ func TestRoleMeta(t *testing.T) {
 		t.Fatal(string(b))
 	}
 }
+
+func TestReplayed(t *testing.T) {
+	e, ok := Replayed(json.RawMessage(`{"sessionId":"s1"}`), t0)
+	if !ok || e.Session != "s1" {
+		t.Fatalf("%+v %v", e, ok)
+	}
+	for _, bad := range []string{`{}`, `{"sessionId":3}`, `[]`} {
+		if _, ok := Replayed(json.RawMessage(bad), t0); ok {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}

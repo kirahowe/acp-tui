@@ -64,6 +64,8 @@ type Conv struct {
 	// InRoster says the roster has listed the session. A listed session
 	// the roster stops listing has ended.
 	InRoster bool
+	// Loaded says relay has finished the replay (_relay/replayed).
+	Loaded bool
 	// Closed says what was left open by the replay has been closed, once
 	// the roster reported the conversation idle.
 	Closed bool
@@ -205,6 +207,11 @@ type (
 		At                       time.Time
 		Session, CallID, Outcome string
 	}
+	// Replayed is _relay/replayed: the replay of a conversation is over.
+	Replayed struct {
+		At      time.Time
+		Session string
+	}
 	// ConversationEnded is the answer to ending a conversation.
 	ConversationEnded struct {
 		At      time.Time
@@ -245,6 +252,7 @@ func (e RosterUpdate) at() time.Time      { return e.At }
 func (e Routed) at() time.Time            { return e.Event.at() }
 func (e Attached) at() time.Time          { return e.At }
 func (e PermissionSettled) at() time.Time { return e.At }
+func (e Replayed) at() time.Time          { return e.At }
 func (e ConversationEnded) at() time.Time { return e.At }
 func (e FocusMove) at() time.Time         { return e.At }
 func (e FocusIndex) at() time.Time        { return e.At }
@@ -323,7 +331,7 @@ func newConv(session, role string) Conv {
 func (r *hubReducer) apply(e Event) {
 	h := &r.h
 	switch e.(type) {
-	case Tick, TerminalReady, Printed, HubConnected, RosterUpdate, Routed, Attached, PermissionSettled,
+	case Tick, TerminalReady, Printed, HubConnected, RosterUpdate, Routed, Attached, PermissionSettled, Replayed,
 		ConversationEnded, CardsChanged, AgentExited:
 	default:
 		h.Notice = "" // a key was pressed
@@ -345,6 +353,11 @@ func (r *hubReducer) apply(e Event) {
 		}
 	case Attached:
 		r.attached(e)
+	case Replayed:
+		if i := r.sessionIndex(e.Session); i >= 0 {
+			h.Convs[i].Loaded = true
+			r.toConv(i, ReplayEnd{At: e.At}, false)
+		}
 	case PermissionSettled:
 		if i := r.sessionIndex(e.Session); i >= 0 {
 			r.toConv(i, Settled{At: e.At, CallID: e.CallID, Outcome: e.Outcome}, false)

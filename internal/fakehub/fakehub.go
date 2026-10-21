@@ -250,6 +250,16 @@ func (h *Hub) replay(c *conv) {
 	}
 }
 
+// replayed tells the client the replay is over.
+func (h *Hub) replayed(c *conv) {
+	h.mu.Lock()
+	conn := h.conn
+	h.mu.Unlock()
+	if conn != nil {
+		_ = conn.NotifyExtension(context.Background(), "_relay/replayed", map[string]any{"sessionId": c.session})
+	}
+}
+
 func (h *Hub) NewSession(_ context.Context, req acp.NewSessionRequest) (acp.NewSessionResponse, error) {
 	var id string
 	if raw, ok := req.Meta["relay/role"]; ok {
@@ -266,7 +276,7 @@ func (h *Hub) NewSession(_ context.Context, req acp.NewSessionRequest) (acp.NewS
 		h.mu.Unlock()
 		h.logf("new %s attached=true", id)
 		// The replay follows the answer.
-		time.AfterFunc(30*time.Millisecond, func() { h.replay(c) })
+		time.AfterFunc(30*time.Millisecond, func() { h.replay(c); h.replayed(c) })
 		return acp.NewSessionResponse{SessionId: acp.SessionId(c.session),
 			Meta: map[string]json.RawMessage{"relay/attached": json.RawMessage("true")}}, nil
 	}
@@ -289,6 +299,7 @@ func (h *Hub) LoadSession(_ context.Context, req acp.LoadSessionRequest) (acp.Lo
 	h.mu.Unlock()
 	h.logf("load %s", req.SessionId)
 	h.replay(c)
+	h.replayed(c)
 	return acp.LoadSessionResponse{}, nil
 }
 

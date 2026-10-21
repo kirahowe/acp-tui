@@ -22,6 +22,7 @@ const (
 	MethodRolesChanged = "_relay/roles/changed"
 	MethodSettled      = "_relay/permission/settled"
 	MethodEnd          = "_relay/conversations/end"
+	MethodReplayed     = "_relay/replayed"
 	MethodSeen         = "_relay/seen"
 )
 
@@ -155,4 +156,16 @@ func SessionParams(session string) map[string]any { return map[string]any{"sessi
 // SeenParams are the parameters of _relay/seen.
 func SeenParams(session string, turn int) map[string]any {
 	return map[string]any{"sessionId": session, "turn": turn}
+}
+
+// Replayed translates _relay/replayed. ok is false when it cannot be
+// read.
+func Replayed(params json.RawMessage, at time.Time) (core.Replayed, bool) {
+	var r struct {
+		SessionID string `json:"sessionId"`
+	}
+	if strictjson.Unmarshal(params, &r) != nil || r.SessionID == "" {
+		return core.Replayed{}, false
+	}
+	return core.Replayed{At: at, Session: r.SessionID}, true
 }
