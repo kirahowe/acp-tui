@@ -13,6 +13,9 @@ make build
 bin/acp-tui -- agentloop acp request.json
 ```
 
+With relay's hub, `--open ROLE` focuses that role at the start (see
+"Several conversations").
+
 Everything after `--` is the agent's command. It runs in the current
 directory, which is also the session's working directory.
 
@@ -202,6 +205,68 @@ characters visible and defanged links in text from outside, which it
 marks as such, and acp-tui puts that text under the `untrusted` mark.
 Links are never clickable, and acp-tui fetches nothing.
 
+## Several conversations (relay's hub)
+
+When the agent is relay's hub, acp-tui shows every role at once. It knows
+this from `_meta["relay/hub"]` in the answer to `initialize`. Against any
+other agent nothing here applies, and the client works as described
+above. `relay chat [role]` runs it as
+`acp-tui [--open ROLE] -- relay acp --approvals`.
+
+The whole screen is drawn on the alternate screen, from state. On a
+screen 73 columns or wider, the roles stand in a sidebar and the
+conversation in focus fills the rest. On a narrower one you see either
+the list of roles or the conversation, as on a phone: the conversation's
+first row says `ctrl+g roles`. Without `--open` acp-tui starts on the
+list.
+
+Each role has at most one live conversation. A role with one is
+attached with its history: relay replays what was said, including your
+own prompts (shown in their boxes), and prompts sent from another device
+arrive as they happen. A role with none shows "No conversation"; typing
+a message, or pressing enter on an empty input, starts one. Moving
+between roles never starts a conversation. Closing acp-tui does not end
+a conversation when relay runs as a service. Every role keeps its own
+unsent text while you are elsewhere.
+
+What the sidebar shows beside a role (the `?` list explains them too):
+
+- `▶` a turn is running, `…` a prompt waits for the role's scheduled work
+  to finish (the status line says "waiting for the role's scheduled
+  work"), `~` the role's scheduled work is running
+- `●` the latest reply is unread
+- `?2` two permission requests wait, in reverse video; `!1` one of the
+  role's calls is held for you
+
+A request from a conversation in the background shows as `?N` beside its
+role and is answered after switching to it. Switching starts the 600 ms
+delay again, so a key typed for the switch cannot approve it. When
+another device answers first, the dialog closes and the transcript notes
+"answered elsewhere".
+
+Keys, besides the usual ones:
+
+- ctrl+n and ctrl+p, the next and previous role
+- alt+1 to alt+9, that role
+- ctrl+l, the role you were in before
+- ctrl+g, the list of roles: up and down move, enter opens, esc goes
+  back
+- ctrl+s, end this conversation. The view asks first; y ends it, n
+  keeps it. relay cancels a running turn before it ends.
+- page up and page down, or the mouse wheel, scroll; ctrl+t and ctrl+o
+  show tool calls and thinking in full, as in the transcript
+- ctrl+c cancels a running turn, including one another device started,
+  and otherwise clears the input or quits. Quitting leaves the
+  conversations running.
+
+The workspace pane (ctrl+x) and the board (b) belong to the conversation
+in focus. In hub mode the pane covers the conversation rather than
+standing beside it.
+
+acp-tui tells relay the latest turn has been seen (`_relay/seen`) once
+the conversation is attached, on screen, scrolled to its end and idle,
+so the unread mark clears on every device.
+
 ## Pasting marks the conversation untrusted
 
 A pasted email or web page is text an outsider may have written, and
@@ -254,6 +319,16 @@ time and in order.
 Tea program. Both are thin code around the core that carries out its
 effects.
 
+Hub mode adds one level above `Reduce`. `core.Hub` holds relay's roster
+as it last sent it, one `State` per conversation (marked `Shared`, so it
+takes updates in any phase, since a replay has no end marker and another
+device may be driving the turn) and which role is in focus.
+`core.ReduceHub` hands events for one conversation to `Reduce` and wraps
+the effects with the session they belong to. Every event from the agent
+carries its session id (`core.Routed`). `render.HubView` draws the whole
+screen from the hub alone, and the roster is replaced whole each time
+relay sends it, so applying one twice changes nothing.
+
 ## Reading JSON
 
 acp-tui reads everything the agent sends, and every recording another
@@ -303,6 +378,11 @@ The property tests run 100 cases each by default. For a longer run:
 ```sh
 go test ./... -rapid.checks=5000
 ```
+
+`cmd/fakehub` stands in for relay's hub in the tests: the roster, attach
+with replay, several sessions, a permission request another device can
+settle, and a turn queued behind scheduled work. A control file plays the
+second device; see `internal/fakehub` for its commands.
 
 `testdata/agentloop` holds ACP streams recorded from agentloop. The tests
 replay them; nothing imports agentloop. The end-to-end tests run acp-tui
