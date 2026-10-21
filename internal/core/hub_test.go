@@ -555,7 +555,7 @@ func TestHubFailedLoadIsNotRetried(t *testing.T) {
 }
 
 func TestHubReplayedClosesWhatTheReplayLeftOpen(t *testing.T) {
-	h, _ := apply(t, NewHub("dev"), HubConnected{At: t0},
+	h, _ := apply(t, NewHub("dev"), HubConnected{At: t0}, RosterUpdate{At: t0, Roles: []Role{role("dev", "s1")}},
 		routed("s1", ToolStarted{At: t0, ID: "t", Name: "fetch", Status: Running}),
 		Attached{At: t0, Role: "dev", Session: "s1"})
 	h, _ = apply(t, h, Replayed{At: t0, Session: "s1"})
@@ -614,4 +614,60 @@ func TestHubReplayMarkerThenLiveEqualsTheWholeTranscript(t *testing.T) {
 			}
 		}
 	})
+}
+
+func toolCalls(h Hub) []Call {
+	var out []Call
+	for _, e := range h.Convs[0].State.Entries {
+		out = append(out, e.Calls...)
+	}
+	return out
+}
+
+// Attaching in the middle of a turn started elsewhere: the call that is
+// open at the marker is running, and its update arrives live.
+func TestHubReplayedMidTurnLeavesRunningCallsOpen(t *testing.T) {
+	r := role("dev", "s1")
+	r.Conv.Turn = TurnRunning
+	h, _ := apply(t, NewHub("dev"), HubConnected{At: t0}, RosterUpdate{At: t0, Roles: []Role{r}},
+		Attached{At: t0, Role: "dev", Session: "s1"},
+		routed("s1", ToolStarted{At: t0, ID: "t", Name: "fetch", Status: Running}),
+		Replayed{At: t0, Session: "s1"})
+	if c := toolCalls(h); len(c) != 1 || c[0].Status != Running {
+		t.Fatalf("calls after the marker: %+v", c)
+	}
+	h, _ = apply(t, h, routed("s1", ToolUpdated{At: t0, ID: "t", Status: statusp(OK)}))
+	if c := toolCalls(h); len(c) != 1 || c[0].Status != OK {
+		t.Fatalf("calls after the live update: %+v", c)
+	}
+	// And a queued turn counts as running; an idle roster later closes leftovers.
+	r.Conv.Turn = TurnIdle
+	h, _ = apply(t, h, routed("s1", ToolStarted{At: t0, ID: "u", Name: "x", Status: Running}),
+		RosterUpdate{At: t0, Roles: []Role{r}})
+	if c := toolCalls(h); len(c) != 2 || c[1].Status != Stopped {
+		t.Fatalf("fallback: %+v", c)
+	}
+}
+
+// A live update for a call the marker already stopped changes it or is
+// ignored, but never adds a second entry.
+func TestHubLateUpdateForAStoppedCallAddsNothing(t *testing.T) {
+	h, _ := apply(t, NewHub("dev"), HubConnected{At: t0}, RosterUpdate{At: t0, Roles: []Role{role("dev", "s1")}},
+		Attached{At: t0, Role: "dev", Session: "s1"},
+		routed("s1", ToolStarted{At: t0, ID: "t", Name: "fetch", Status: Running}),
+		Replayed{At: t0, Session: "s1"})
+	if c := toolCalls(h); len(c) != 1 || c[0].Status != Stopped {
+		t.Fatalf("not stopped: %+v", c)
+	}
+	n := len(h.Convs[0].State.Entries)
+	h, _ = apply(t, h, routed("s1", ToolUpdated{At: t0, ID: "t", Status: statusp(OK)}))
+	if len(h.Convs[0].State.Entries) != n || len(toolCalls(h)) != 1 {
+		t.Fatalf("a second entry: %+v", h.Convs[0].State.Entries)
+	}
+	// Even once the run is final.
+	h, _ = apply(t, h, routed("s1", TextChunk{At: t0, Text: "x"}), routed("s1", TextChunk{At: t0, Text: "\n\n"}),
+		routed("s1", ToolUpdated{At: t0, ID: "t", Status: statusp(Failed)}))
+	if len(toolCalls(h)) != 1 {
+		t.Fatalf("a second call: %+v", toolCalls(h))
+	}
 }

@@ -356,7 +356,13 @@ func (r *hubReducer) apply(e Event) {
 	case Replayed:
 		if i := r.sessionIndex(e.Session); i >= 0 {
 			h.Convs[i].Loaded = true
-			r.toConv(i, ReplayEnd{At: e.At}, false)
+			// A call still open when the replay ends is running if the
+			// turn is (it was started on another device and its update will
+			// arrive live). It stops only when the roster says no turn runs;
+			// before the roster has come, the roster going idle closes it.
+			if r.turnIdle(h.Convs[i]) {
+				r.toConv(i, ReplayEnd{At: e.At}, false)
+			}
 		}
 	case PermissionSettled:
 		if i := r.sessionIndex(e.Session); i >= 0 {
@@ -678,6 +684,20 @@ func (r *hubReducer) ended(e ConversationEnded) {
 	h.Ended = append(h.Ended, e.Session)
 	h.EndAsk = false
 	h.Notice = "conversation ended"
+}
+
+// turnIdle says the roster is loaded and lists no running or queued turn
+// for the conversation.
+func (r *hubReducer) turnIdle(c Conv) bool {
+	if !r.h.RosterLoaded {
+		return false
+	}
+	for _, rl := range r.h.Roles {
+		if rl.Conv != nil && rl.Conv.Session == c.Session {
+			return rl.Conv.Turn != TurnRunning && rl.Conv.Turn != TurnQueued
+		}
+	}
+	return true
 }
 
 // roster replaces the roster and settles the conversations against it.
