@@ -14,15 +14,18 @@ import (
 
 type nopConn struct{}
 
-func (nopConn) Prompt(string, []core.Attachment) {}
-func (nopConn) Cancel()                          {}
-func (nopConn) Answer(core.AnswerPermission)     {}
-func (nopConn) Items()                           {}
-func (nopConn) Resolve(string)                   {}
-func (nopConn) Trust(string, string, string)     {}
-func (nopConn) Cards()                           {}
-func (nopConn) CardOp(int64, core.CardOp)        {}
-func (nopConn) Shutdown()                        {}
+func (nopConn) Prompt(string, string, []core.Attachment) {}
+func (nopConn) Cancel(string)                            {}
+func (nopConn) Answer(core.AnswerPermission)             {}
+func (nopConn) Items(string)                             {}
+func (nopConn) Resolve(string, string)                   {}
+func (nopConn) Trust(string, string, string, string)     {}
+func (nopConn) Cards(string)                             {}
+func (nopConn) CardOp(string, int64, core.CardOp)        {}
+func (nopConn) Attach(string, string)                    {}
+func (nopConn) End(string)                               {}
+func (nopConn) Seen(string, int)                         {}
+func (nopConn) Shutdown()                                {}
 
 func genKey(t *rapid.T) tea.KeyPressMsg {
 	code := rapid.OneOf(

@@ -1,0 +1,16 @@
+␛[0;1mrelay␛[m                   ␛[m ␛[0;2m│␛[m ␛[0;1mDev␛[m␛[0;2m · 3 turns␛[m
+␛[0;1m› ␛[mDev                  ␛[0;1m●␛[m␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ctrl+x              ␛[0;2mworkspace pane␛[m␛[0;2m                                  ␛[m ␛[0;2m│␛[m
+  Mail           ␛[0;1;7m?1␛[m ␛[0;1m!2␛[m …␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ctrl+y              ␛[0;2mnext paste goes in as trusted text␛[m␛[0;2m              ␛[m ␛[0;2m│␛[m
+  ␛[0;2mGarden planner␛[m       ~␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ctrl+c              ␛[0;2mstop the turn, clear, or quit␛[m␛[0;2m                   ␛[m ␛[0;2m│␛[m
+  News                 ▶␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ctrl+d              ␛[0;2mquit, from an empty input␛[m␛[0;2m                       ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ?                   ␛[0;2mthese keys, from an empty input␛[m␛[0;2m                 ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ␛[0;2many key closes this␛[m␛[0;2m                                                 ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m╰──────────────────────────────────────────────────────────────────────╯␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m▶ replying   … waiting for scheduled work␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m~ scheduled work runs   ● unread␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m?N requests to answer   !N held calls␛[m
+                        ␛[m ␛[0;2m│␛[m 
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m╭──────────────────────────────────────────────────────────────────────╮␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m                                                                      ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m╰──────────────────────────────────────────────────────────────────────╯␛[m
+␛[0;2mctrl+g roles · ? keys␛[m   ␛[m ␛[0;2m│␛[m ␛[0;2m  ready · ctrl+j for a new line · ? keys␛[m

@@ -23,7 +23,7 @@ import (
 	"github.com/kirahowe/acp-tui/internal/ui"
 )
 
-var fakeAgent string
+var fakeAgent, fakeHub string
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "acp-tui-e2e")
@@ -34,6 +34,11 @@ func TestMain(m *testing.M) {
 	fakeAgent = filepath.Join(dir, "fakeagent")
 	if out, err := exec.Command("go", "build", "-o", fakeAgent, "../../cmd/fakeagent").CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "building fakeagent: %v\n%s", err, out)
+		os.Exit(1)
+	}
+	fakeHub = filepath.Join(dir, "fakehub")
+	if out, err := exec.Command("go", "build", "-o", fakeHub, "../../cmd/fakehub").CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "building fakehub: %v\n%s", err, out)
 		os.Exit(1)
 	}
 	code := m.Run()

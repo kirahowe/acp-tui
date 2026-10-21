@@ -1,0 +1,16 @@
+␛[0;2m‹ ctrl+g roles · ␛[m␛[0;1mDev␛[m  ␛[0;1;7m?1␛[m␛[0;2m · 3 turns␛[m
+␛[0;2m│␛[m ctrl+x              ␛[0;2mworkspace pane␛[m␛[0;2m ␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ctrl+y              ␛[0;2mnext paste goe…␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ctrl+c              ␛[0;2mstop the turn,…␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ctrl+d              ␛[0;2mquit, from an …␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ?                   ␛[0;2mthese keys, fr…␛[m ␛[0;2m│␛[m
+␛[0;2m│␛[m ␛[0;2many key closes this␛[m␛[0;2m                ␛[m ␛[0;2m│␛[m
+␛[0;2m╰─────────────────────────────────────╯␛[m
+␛[0;2m▶ replying   … waiting for schedul…␛[m
+␛[0;2m~ scheduled work runs   ● unread␛[m
+␛[0;2m?N requests to answer   !N held ca…␛[m
+
+␛[0;2m╭─────────────────────────────────────╮␛[m
+␛[0;2m│␛[m                                     ␛[0;2m│␛[m
+␛[0;2m╰─────────────────────────────────────╯␛[m
+␛[0;2m  ready · ctrl+j for a new line␛[m

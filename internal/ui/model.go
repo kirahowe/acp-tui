@@ -17,18 +17,27 @@ import (
 // Conn is the agent, as the UI uses it. None of its methods may block
 // except Shutdown.
 type Conn interface {
-	Prompt(text string, atts []core.Attachment)
-	Cancel()
+	// The methods that take a session name the conversation they are
+	// about; against a plain agent it is "", its only one.
+	Prompt(session, text string, atts []core.Attachment)
+	Cancel(session string)
 	Answer(core.AnswerPermission)
 	// Items, Resolve and Trust call relay's extension methods; their
 	// answers come back as events.
-	Items()
-	Resolve(ref string)
-	Trust(path, version, sha string)
+	Items(session string)
+	Resolve(session, ref string)
+	Trust(session, path, version, sha string)
 	// Cards and CardOp call relay's board methods; their answers, and
 	// relay's notifications of changed cards, come back as events.
-	Cards()
-	CardOp(card int64, op core.CardOp)
+	Cards(session string)
+	CardOp(session string, card int64, op core.CardOp)
+	// Attach, End and Seen are relay hub methods. Attach opens a role's
+	// conversation (loading Session when it is known); End ends one; Seen
+	// says the operator has read it through a turn. Answers come back as
+	// events.
+	Attach(role, session string)
+	End(session string)
+	Seen(session string, turn int)
 	Shutdown()
 }
 
@@ -76,6 +85,14 @@ type Model struct {
 	// is printed meanwhile: Bubble Tea would write the lines into the
 	// alternate screen, and they would never reach scrollback.
 	alt, back bool
+	// hubMode is set once the agent has said it is relay's hub. The
+	// screen is then the hub's, drawn whole on the alternate screen,
+	// and core is not used. open is the role --open named, and drafts
+	// the input each role not in focus had when it was left.
+	hubMode bool
+	hub     core.Hub
+	open    string
+	drafts  map[string]string
 }
 
 // New returns the model for a conversation with conn. title names the
@@ -101,13 +118,34 @@ func New(conn Conn, title string) Model {
 	return Model{input: ta, conn: conn, core: core.State{Title: title}}
 }
 
+// Open makes the model focus the role at the start, when the agent turns
+// out to be relay's hub.
+func (m Model) Open(role string) Model {
+	m.open = role
+	return m
+}
+
 // Died reports whether the agent exited on its own, and why.
-func (m Model) Died() (bool, string) { return m.died, m.core.Exit }
+func (m Model) Died() (bool, string) {
+	if m.hubMode {
+		return m.died, m.hub.Exit
+	}
+	return m.died, m.core.Exit
+}
 
 // Init does nothing: the first size message starts the ticks.
 func (m Model) Init() tea.Cmd { return nil }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if em, ok := msg.(EventMsg); ok {
+		if _, ok := em.Event.(core.HubConnected); ok && !m.hubMode {
+			m.hubMode, m.hub = true, core.NewHub(m.open)
+			m.input.SetWidth(render.InputWidth(render.HubMainWidth(m.width())))
+		}
+	}
+	if m.hubMode {
+		return m.updateHub(msg)
+	}
 	now := time.Now()
 	var ev core.Event
 	var cmds []tea.Cmd
@@ -215,7 +253,7 @@ func (m *Model) key(k tea.KeyPressMsg, now time.Time) (core.Event, tea.Cmd) {
 		return m.transcriptKey(k, empty, now), nil
 	}
 	if m.core.Pane.Focus {
-		return m.paneKey(k, empty, now), nil
+		return paneEvent(m.core, k, empty, now, func() int { return m.frame(now).DetailMax }), nil
 	}
 	switch Classify(k, empty) {
 	case Send:
@@ -280,10 +318,10 @@ func (m *Model) transcriptKey(k tea.KeyPressMsg, empty bool, now time.Time) core
 // paneKey is the event for a key pressed while the workspace pane has
 // focus. The input box never sees it. Ctrl-C still stops a running turn
 // and, otherwise, leaves the pane; Ctrl-D quits only from an empty input.
-func (m *Model) paneKey(k tea.KeyPressMsg, empty bool, now time.Time) core.Event {
+func paneEvent(st core.State, k tea.KeyPressMsg, empty bool, now time.Time, detailMax func() int) core.Event {
 	switch k.String() {
 	case "ctrl+c":
-		if m.core.Phase == core.Busy {
+		if st.Phase == core.Busy {
 			return core.Interrupt{At: now, InputEmpty: true}
 		}
 		return core.PaneKey{At: now, Action: core.PaneToggle}
@@ -293,7 +331,7 @@ func (m *Model) paneKey(k tea.KeyPressMsg, empty bool, now time.Time) core.Event
 		}
 		return nil
 	}
-	if b := m.core.Pane.Board; b.Open {
+	if b := st.Pane.Board; b.Open {
 		if b.Input != nil {
 			a, text := ClassifyBoardInput(k)
 			return core.PaneKey{At: now, Action: a, Text: text}
@@ -302,8 +340,8 @@ func (m *Model) paneKey(k tea.KeyPressMsg, empty bool, now time.Time) core.Event
 	}
 	a := ClassifyPane(k)
 	e := core.PaneKey{At: now, Action: a}
-	if m.core.Pane.Detail {
-		e.Max = m.frame(now).DetailMax
+	if st.Pane.Detail {
+		e.Max = detailMax()
 	}
 	return e
 }
@@ -335,23 +373,12 @@ func askKey(a AskAction, now time.Time) core.Event {
 
 // effect carries out one effect of Reduce.
 func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
+	if m.sessionEffect("", f) {
+		return nil
+	}
 	switch f := f.(type) {
-	case core.SendPrompt:
-		m.conn.Prompt(f.Text, f.Attachments)
-	case core.SendCancel:
-		m.conn.Cancel()
 	case core.AnswerPermission:
 		m.conn.Answer(f)
-	case core.RequestItems:
-		m.conn.Items()
-	case core.RequestResolve:
-		m.conn.Resolve(f.Ref)
-	case core.SendTrust:
-		m.conn.Trust(f.Path, f.Version, f.SHA256)
-	case core.RequestCards:
-		m.conn.Cards()
-	case core.SendCardOp:
-		m.conn.CardOp(f.Card, f.Op)
 	case core.InsertInput:
 		m.input.InsertString(f.Text)
 	case core.RestoreInput:
@@ -364,6 +391,30 @@ func (m *Model) effect(f core.Effect, now time.Time) tea.Cmd {
 		m.quitting = true // stop ends the program
 	}
 	return nil
+}
+
+// sessionEffect carries out an effect that is about one conversation, and
+// says whether it was one. session is "" against a plain agent.
+func (m *Model) sessionEffect(session string, f core.Effect) bool {
+	switch f := f.(type) {
+	case core.SendPrompt:
+		m.conn.Prompt(session, f.Text, f.Attachments)
+	case core.SendCancel:
+		m.conn.Cancel(session)
+	case core.RequestItems:
+		m.conn.Items(session)
+	case core.RequestResolve:
+		m.conn.Resolve(session, f.Ref)
+	case core.SendTrust:
+		m.conn.Trust(session, f.Path, f.Version, f.SHA256)
+	case core.RequestCards:
+		m.conn.Cards(session)
+	case core.SendCardOp:
+		m.conn.CardOp(session, f.Card, f.Op)
+	default:
+		return false
+	}
+	return true
 }
 
 // print puts the lines that have scrolled off the top of the frame into
@@ -433,6 +484,9 @@ func (m Model) transcriptFrame(now time.Time) render.TranscriptFrame {
 }
 
 func (m Model) View() tea.View {
+	if m.hubMode {
+		return m.hubView(time.Now())
+	}
 	if m.alt {
 		v := tea.NewView(m.transcriptFrame(time.Now()).Content)
 		v.AltScreen = true

@@ -24,11 +24,16 @@ import (
 // before its process tree is killed.
 const ShutdownGrace = 3 * time.Second
 
-// Agent is one agent process with one session.
+// Agent is one agent process. Against a plain agent it has one session.
+// Against relay's hub (initialize carries _meta["relay/hub"]) it has as
+// many as the client attaches to, and every event it emits for one is
+// wrapped in core.Routed with its session id.
 type Agent struct {
 	proc    *stdio.ClientProcess
 	emit    func(core.Event)
-	session acp.SessionId // set before Connected is emitted
+	dir     string
+	session acp.SessionId // set before Connected is emitted; unused in hub mode
+	hub     bool          // set before HubConnected is emitted
 
 	mu      sync.Mutex
 	nextAsk uint64
@@ -49,7 +54,7 @@ func Start(command []string, dir string, stderr io.Writer, emit func(core.Event)
 	if len(command) == 0 {
 		return nil, errors.New("no agent command")
 	}
-	a := &Agent{emit: emit}
+	a := &Agent{emit: emit, dir: dir}
 	if stderr == nil {
 		stderr = io.Discard
 	}
@@ -102,6 +107,13 @@ func (a *Agent) handshake(dir string) error {
 	if err != nil {
 		return err
 	}
+	if wire.IsHub(init) {
+		a.hub = true
+		a.emit(wire.HubConnected(init, time.Now()))
+		raw, err := a.call(wire.MethodRoles, struct{}{})
+		a.emit(wire.Roster(raw, err, time.Now()))
+		return nil
+	}
 	sess, err := a.proc.Connection.NewSession(ctx, acp.NewSessionRequest{Cwd: dir, McpServers: []acp.McpServer{}})
 	if err != nil {
 		return err
@@ -113,20 +125,40 @@ func (a *Agent) handshake(dir string) error {
 
 // Prompt sends text, with atts as resources, and, when the agent answers, emits PromptDone or
 // PromptFailed. It does not block.
-func (a *Agent) Prompt(text string, atts []core.Attachment) {
+func (a *Agent) Prompt(session, text string, atts []core.Attachment) {
+	id := a.sid(session)
 	go func() {
 		resp, err := a.proc.Connection.Prompt(context.Background(), acp.PromptRequest{
-			SessionId: a.session,
+			SessionId: id,
 			Prompt:    wire.PromptBlocks(text, atts),
 		})
-		a.emit(wire.Response(resp, err, time.Now()))
+		a.emit(a.route(id, wire.Response(resp, err, time.Now())))
 	}()
 }
 
+// sid is the session a call is about: the one named, or, in single-session
+// mode, where the name is "", the agent's only one.
+func (a *Agent) sid(session string) acp.SessionId {
+	if session == "" {
+		return a.session
+	}
+	return acp.SessionId(session)
+}
+
+// route marks an event as belonging to a session, in hub mode. A plain
+// agent has one session, so its events go unwrapped.
+func (a *Agent) route(id acp.SessionId, e core.Event) core.Event {
+	if !a.hub {
+		return e
+	}
+	return core.Routed{Session: string(id), Event: e}
+}
+
 // Cancel asks the agent to stop the current turn. It does not block.
-func (a *Agent) Cancel() {
+func (a *Agent) Cancel(session string) {
+	id := a.sid(session)
 	go func() {
-		_ = a.proc.Connection.Cancel(context.Background(), acp.CancelNotification{SessionId: a.session})
+		_ = a.proc.Connection.Cancel(context.Background(), acp.CancelNotification{SessionId: id})
 	}()
 }
 
@@ -147,9 +179,9 @@ type client struct{ a *Agent }
 func (c client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
 	now := time.Now()
 	if l, ok := wire.Labels(n, now); ok {
-		c.a.emit(l)
+		c.a.emit(c.a.route(n.SessionId, l))
 	}
-	c.a.emit(wire.Update(n, now))
+	c.a.emit(c.a.route(n.SessionId, wire.Update(n, now)))
 	return nil
 }
 
@@ -174,14 +206,14 @@ func (c client) RequestPermission(ctx context.Context, req acp.RequestPermission
 	}()
 	now := time.Now()
 	if l, ok := wire.PermissionLabels(req, now); ok {
-		a.emit(l)
+		a.emit(a.route(req.SessionId, l))
 	}
 	// The request's own params, as received, for its input as written.
 	input := ""
 	if params, ok := acp.InboundParamsFromContext(ctx); ok {
 		input = wire.ExactInput(params)
 	}
-	a.emit(wire.Permission(req, input, id, now))
+	a.emit(a.route(req.SessionId, wire.Permission(req, input, id, now)))
 	select {
 	case ans := <-reply:
 		return wire.Outcome(ans), nil
@@ -242,57 +274,119 @@ func (a *Agent) call(method string, params any) (json.RawMessage, error) {
 
 // Items asks relay for the workspace's items and emits ItemsLoaded. A
 // plain agent answers method-not-found. It does not block.
-func (a *Agent) Items() {
+func (a *Agent) Items(session string) {
+	id := a.sid(session)
 	a.enqueue(func() {
-		raw, err := a.call(wire.MethodItems, wire.ItemsParams(a.session))
-		a.emit(wire.Items(raw, err, time.Now()))
+		raw, err := a.call(wire.MethodItems, wire.ItemsParams(id))
+		a.emit(a.route(id, wire.Items(raw, err, time.Now())))
 	})
 }
 
 // Resolve asks relay about a reference and emits CitationResolved. It
 // does not block.
-func (a *Agent) Resolve(ref string) {
+func (a *Agent) Resolve(session, ref string) {
+	id := a.sid(session)
 	a.enqueue(func() {
-		raw, err := a.call(wire.MethodResolve, wire.ResolveParams(a.session, ref))
-		a.emit(wire.Resolution(ref, raw, err, time.Now()))
+		raw, err := a.call(wire.MethodResolve, wire.ResolveParams(id, ref))
+		a.emit(a.route(id, wire.Resolution(ref, raw, err, time.Now())))
 	})
 }
 
 // Trust asks relay to trust the doc at path as it was listed and emits
 // TrustDone. It does not block.
-func (a *Agent) Trust(path, version, sha string) {
+func (a *Agent) Trust(session, path, version, sha string) {
+	id := a.sid(session)
 	a.enqueue(func() {
-		raw, err := a.call(wire.MethodTrust, wire.TrustParams(a.session, path, version, sha))
-		a.emit(wire.TrustOutcome(path, raw, err, time.Now()))
+		raw, err := a.call(wire.MethodTrust, wire.TrustParams(id, path, version, sha))
+		a.emit(a.route(id, wire.TrustOutcome(path, raw, err, time.Now())))
 	})
 }
 
 // Cards asks relay for the board and emits CardsLoaded. It does not
 // block.
-func (a *Agent) Cards() {
+func (a *Agent) Cards(session string) {
+	id := a.sid(session)
 	a.enqueue(func() {
-		raw, err := a.call(wire.MethodCards, wire.CardsParams(a.session))
-		a.emit(wire.Cards(raw, err, time.Now()))
+		raw, err := a.call(wire.MethodCards, wire.CardsParams(id))
+		a.emit(a.route(id, wire.Cards(raw, err, time.Now())))
 	})
 }
 
 // CardOp sends relay an op on a card and emits CardOpDone. It does not
 // block.
-func (a *Agent) CardOp(card int64, op core.CardOp) {
+func (a *Agent) CardOp(session string, card int64, op core.CardOp) {
+	id := a.sid(session)
 	a.enqueue(func() {
-		raw, err := a.call(wire.MethodCardOp, wire.CardOpParams(a.session, card, op))
-		a.emit(wire.CardOpOutcome(card, raw, err, time.Now()))
+		raw, err := a.call(wire.MethodCardOp, wire.CardOpParams(id, card, op))
+		a.emit(a.route(id, wire.CardOpOutcome(card, raw, err, time.Now())))
 	})
 }
 
 // HandleExtensionMethod takes relay's _relay/cards/changed notification.
 // The client answers no extension request.
 func (c client) HandleExtensionMethod(_ context.Context, method string, params json.RawMessage) (any, error) {
-	if method == wire.MethodCardsChanged {
+	switch method {
+	case wire.MethodCardsChanged:
 		if e, ok := wire.CardsChanged(params, time.Now()); ok {
+			c.a.emit(e)
+		}
+		return nil, nil
+	case wire.MethodRolesChanged:
+		if e, ok := wire.RosterChanged(params, time.Now()); ok && c.a.hub {
+			c.a.emit(e)
+		}
+		return nil, nil
+	case wire.MethodSettled:
+		if e, ok := wire.Settled(params, time.Now()); ok && c.a.hub {
 			c.a.emit(e)
 		}
 		return nil, nil
 	}
 	return nil, acp.NewMethodNotFound(method)
+}
+
+// Attach opens a role's conversation and emits Attached when relay
+// answers. With a session it loads that live conversation, and the
+// replay follows as updates; without one it asks for a new session for
+// the role, and relay attaches to the role's conversation if it has one.
+// It does not block.
+func (a *Agent) Attach(role, session string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), extTimeout)
+		defer cancel()
+		var err error
+		if session != "" {
+			_, err = a.proc.Connection.LoadSession(ctx, acp.LoadSessionRequest{
+				SessionId: acp.SessionId(session), Cwd: a.dir, McpServers: []acp.McpServer{}})
+		} else {
+			var resp acp.NewSessionResponse
+			resp, err = a.proc.Connection.NewSession(ctx, acp.NewSessionRequest{
+				Cwd: a.dir, McpServers: []acp.McpServer{}, Meta: wire.RoleMeta(role)})
+			session = string(resp.SessionId)
+		}
+		a.emit(wire.Attached(role, session, err, time.Now()))
+	}()
+}
+
+// endTimeout is how long ending a conversation may take: relay cancels a
+// running turn first.
+const endTimeout = 60 * time.Second
+
+// End asks relay to end a conversation and emits ConversationEnded. It
+// does not block, and does not wait behind the other extension calls.
+func (a *Agent) End(session string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), endTimeout)
+		defer cancel()
+		_, err := a.proc.Connection.CallExtension(ctx, wire.MethodEnd, wire.SessionParams(session))
+		a.emit(wire.Ended(session, err, time.Now()))
+	}()
+}
+
+// Seen tells relay the operator has seen a conversation through a turn.
+// The answer is not used. It does not block.
+func (a *Agent) Seen(session string, turn int) {
+	go func() {
+		_, _ = a.call(wire.MethodSeen, wire.SeenParams(session, turn))
+	}()
 }

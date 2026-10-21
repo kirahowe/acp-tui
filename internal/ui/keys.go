@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kirahowe/acp-tui/internal/core"
@@ -254,4 +256,92 @@ func ClassifyBoardInput(k tea.KeyPressMsg) (core.PaneAction, string) {
 		return core.PaneChar, k.Text
 	}
 	return core.PaneOther, ""
+}
+
+// HubAction is what a key press does in hub mode, ahead of everything
+// else but the list of keys and a question being asked: moving between
+// roles and conversations. Index is set for HubIndex.
+type HubAction int
+
+const (
+	HubNone  HubAction = iota
+	HubNext            // ctrl+n: the next role
+	HubPrev            // ctrl+p: the previous role
+	HubIndex           // alt+1 to alt+9: that role
+	HubLast            // ctrl+l: the role before this one
+	HubList            // ctrl+g: the list of roles
+	HubEnd             // ctrl+s: end the conversation, after asking
+)
+
+// ClassifyHub decides whether a key press moves between conversations.
+// It is pure. These keys act even while a permission request waits: the
+// request stays until it is answered, and the sidebar says so.
+func ClassifyHub(k tea.KeyPressMsg) (HubAction, int) {
+	switch s := k.String(); s {
+	case "ctrl+n":
+		return HubNext, 0
+	case "ctrl+p":
+		return HubPrev, 0
+	case "ctrl+l":
+		return HubLast, 0
+	case "ctrl+g":
+		return HubList, 0
+	case "ctrl+s":
+		return HubEnd, 0
+	default:
+		if n, ok := strings.CutPrefix(s, "alt+"); ok && len(n) == 1 && n[0] >= '1' && n[0] <= '9' {
+			return HubIndex, int(n[0] - '1')
+		}
+	}
+	return HubNone, 0
+}
+
+// ListAction is what a key press does while the list of roles has the
+// keys.
+type ListAction int
+
+const (
+	ListNone ListAction = iota
+	ListUp
+	ListDown
+	ListOpen
+	ListBack
+	ListHelp
+	ListInterrupt
+	ListEOF
+)
+
+// ClassifyList decides what a key press does in the list of roles. Every
+// other key is swallowed. It is pure.
+func ClassifyList(k tea.KeyPressMsg) ListAction {
+	switch k.String() {
+	case "up", "k", "shift+tab":
+		return ListUp
+	case "down", "j", "tab":
+		return ListDown
+	case "enter":
+		return ListOpen
+	case "esc":
+		return ListBack
+	case "?", "ctrl+/", "ctrl+_":
+		return ListHelp
+	case "ctrl+c":
+		return ListInterrupt
+	case "ctrl+d":
+		return ListEOF
+	}
+	return ListNone
+}
+
+// ClassifyEnd decides what a key press answers when the view asks
+// whether to end a conversation: yes only for y, no for n, Esc and
+// Ctrl-C, and nothing for any other key. It is pure.
+func ClassifyEnd(k tea.KeyPressMsg) (answered, yes bool) {
+	switch k.String() {
+	case "y", "Y":
+		return true, true
+	case "n", "N", "esc", "ctrl+c":
+		return true, false
+	}
+	return false, false
 }

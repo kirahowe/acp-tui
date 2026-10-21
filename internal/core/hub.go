@@ -491,6 +491,9 @@ func (r *hubReducer) cancelAsks(i int) {
 func (r *hubReducer) interrupt(e Interrupt) {
 	h := &r.h
 	c := h.Focused()
+	if c == nil && !h.List && !e.InputEmpty {
+		return // Ctrl-C clears the line; there is nothing else to stop
+	}
 	if c == nil || h.List {
 		for i := range h.Convs {
 			r.cancelAsks(i)

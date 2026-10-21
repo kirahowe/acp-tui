@@ -1,0 +1,16 @@
+␛[0;1mrelay␛[m                   ␛[m ␛[0;2m│␛[m ␛[0;1mMail␛[m␛[0;2m · 1 turn␛[m
+  Dev                  ␛[0;1m●␛[m␛[m ␛[0;2m│␛[m 
+␛[0;1m› ␛[mMail           ␛[0;1;7m?1␛[m ␛[0;1m!2␛[m …␛[m ␛[0;2m│␛[m 
+  ␛[0;2mGarden planner␛[m       ~␛[m ␛[0;2m│␛[m 
+  News                 ▶␛[m ␛[0;2m│␛[m 
+                        ␛[m ␛[0;2m│␛[m 
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m╭─␛[m permission needed ␛[0;2m──────────────────────────────────────────────────␛[m␛[0;2m╮␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ␛[0;1msend_mail␛[m␛[0;2m                                                           ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ␛[0;2m{␛[m␛[0;2m                                                                   ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ␛[0;2m    "to": "a@example.com"␛[m␛[0;2m                                           ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ␛[0;2m}␛[m␛[0;2m                                                                   ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m   Allow (y)␛[0;2m                                                         ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ␛[0;1m▸ Reject (n)␛[m␛[0;2m                                                        ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m│␛[m ␛[0;2m↑↓ enter choose · v see all · esc cancel␛[m␛[0;2m                            ␛[m ␛[0;2m│␛[m
+                        ␛[m ␛[0;2m│␛[m ␛[0;2m╰──────────────────────────────────────────────────────────────────────╯␛[m
+␛[0;2mctrl+g roles · ? keys␛[m   ␛[m ␛[0;2m│␛[m ␛[0;2m? ␛[0;1m[private]␛[0;2m waiting for you · waiting for the role's scheduled work␛[m

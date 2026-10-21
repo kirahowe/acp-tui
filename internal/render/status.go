@@ -30,6 +30,10 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 	case core.StatusIdle:
 		lead = " "
 		add("ready")
+		if l.Remote == core.TurnRunning {
+			lead = spinner(now)
+			parts = []string{"replying"}
+		}
 	case core.StatusExited:
 		lead = " "
 		add("the agent exited")
@@ -58,10 +62,13 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 			add(strconv.Itoa(l.Asks) + " requests")
 		}
 	}
+	if l.Remote == core.TurnQueued {
+		add("waiting for the role's scheduled work")
+	}
 	if l.PaneHint {
 		add(fmt.Sprintf("%s workspace (%d)", PaneKey, l.PaneItems))
 	}
-	if l.Kind != core.StatusIdle && l.Kind != core.StatusStarting && l.Kind != core.StatusExited {
+	if l.Kind != core.StatusIdle && l.Kind != core.StatusStarting && l.Kind != core.StatusExited && !l.NoClock {
 		add(Duration(l.Elapsed))
 	}
 	if l.Quiet > 0 {
@@ -76,7 +83,7 @@ func StatusText(l core.StatusLine, hint string, now time.Time, width int) string
 	if l.Spend != nil {
 		add(Money(*l.Spend))
 	}
-	if l.Kind == core.StatusIdle {
+	if l.Kind == core.StatusIdle && l.Remote != core.TurnRunning {
 		add(hint)
 		add("? keys")
 	}

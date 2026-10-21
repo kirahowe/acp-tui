@@ -23,6 +23,8 @@ func press(t *testing.T, name string) tea.KeyPressMsg {
 			k.Mod = tea.ModCtrl
 		case "shift":
 			k.Mod = tea.ModShift
+		case "alt":
+			k.Mod = tea.ModAlt
 		}
 	} else {
 		key = name

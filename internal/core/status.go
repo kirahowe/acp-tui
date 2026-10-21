@@ -46,6 +46,12 @@ type StatusLine struct {
 	// the pane is a toggled overlay, so the status line names its key.
 	PaneItems int
 	PaneHint  bool
+	// Remote is where the roster says the conversation's turn stands, in
+	// hub mode: a turn another device started, or a prompt waiting for the
+	// role's scheduled work.
+	Remote TurnState
+	// NoClock says no turn of ours runs, so there is no elapsed time to show.
+	NoClock bool
 }
 
 // Status describes s at time now.
@@ -57,6 +63,11 @@ func Status(s State, now time.Time) StatusLine {
 		hi, lo := bits.Mul64(min(u.Used, u.Size), 100)
 		pct, _ := bits.Div64(hi, lo, u.Size) // hi < Size, as Used <= Size
 		l.Context = int(pct)
+	}
+	if s.Shared && len(s.Asks) > 0 && s.Phase != Busy && s.Phase != Exited {
+		// A request in a conversation whose turn another device runs.
+		l.Kind, l.NoClock = StatusAsking, true
+		return l
 	}
 	switch s.Phase {
 	case Starting:
