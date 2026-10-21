@@ -419,3 +419,45 @@ func TestHubPasteBecomesAnUntrustedPlaceholder(t *testing.T) {
 	h.keys("\x1b[200~line one\nline two\x1b[201~")
 	h.waitScreen("the placeholder", contains("untrusted #1"))
 }
+
+func manyTurns() fakehub.Config {
+	cfg := threeRoles()
+	var hist []fakehub.Said
+	for i := 0; i < 30; i++ {
+		hist = append(hist, fakehub.Said{User: "q" + string(rune('a'+i%26)) + string(rune('a'+i/26)), Agent: "reply number " + string(rune('A'+i%26)) + string(rune('a'+i/26))})
+	}
+	cfg.Roles[0].Live = &fakehub.Live{Unread: true, History: hist}
+	return cfg
+}
+
+// A long request is read by scrolling: Page Up moves the view while a
+// request waits.
+func TestHubPageKeysScrollWhileARequestWaits(t *testing.T) {
+	h := startHub(t, manyTurns(), 100, 30, "dev")
+	h.waitScreen("the end", contains("reply number Db"))
+	h.say("ask dev")
+	h.waitScreen("the request", contains("permission needed"))
+	for i := 0; i < 10; i++ {
+		h.keys("\x1b[5~")
+	}
+	h.waitScreen("scrolled", contains("↓ "))
+	time.Sleep(200 * time.Millisecond)
+	if got := h.logged("permission "); len(got) != 0 {
+		t.Fatalf("a page key answered the request: %v", got)
+	}
+}
+
+// In a window too small to show the request, y approves nothing, and the
+// view says why.
+func TestHubTooSmallWindowCannotApprove(t *testing.T) {
+	h := startHub(t, threeRoles(), 40, 8, "dev")
+	h.waitScreen("dev", contains("hello from dev"))
+	h.say("ask dev " + strings.Repeat("x", 500))
+	h.waitScreen("the notice", contains("too small"))
+	time.Sleep(800 * time.Millisecond)
+	h.keys("y")
+	time.Sleep(300 * time.Millisecond)
+	if got := h.logged("permission "); len(got) != 0 {
+		t.Fatalf("approved in a window too small to read the request: %v", got)
+	}
+}

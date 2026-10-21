@@ -192,6 +192,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.effect(f, now))
 		}
 	}
+	if len(m.core.Asks) > 0 || m.core.TooSmall {
+		if f := m.frame(now); f.TooSmall != m.core.TooSmall {
+			m.core, _ = core.Reduce(m.core, core.Viewport{At: now, TooSmall: f.TooSmall})
+		}
+	}
 	cmds = append(cmds, m.screen(), m.print(now), m.tick(now), m.stop())
 	return m, tea.Batch(cmds...)
 }

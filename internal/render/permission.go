@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"time"
 
@@ -60,7 +61,9 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 		title = Defang(title)
 	}
 	var lines []string
-	for _, l := range wrapAll([]string{title}, inner) {
+	// A title is the model's to write and can be as long as it likes, so
+	// it takes at most titleRows rows; v puts all of it in the transcript.
+	for _, l := range capLines(wrapAll([]string{title}, inner), titleRows, inner) {
 		lines = append(lines, styled(bold, l))
 	}
 	armed := now.Sub(p.Since) >= core.ArmDelay
@@ -77,7 +80,7 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 		if k := optionKey(o.Kind); k != "" {
 			text += " (" + k + ")"
 		}
-		for j, l := range wrapAll([]string{text}, inner-2) {
+		for j, l := range capLines(wrapAll([]string{text}, inner-2), optionRows, inner-2) {
 			lead := "  "
 			if j == 0 {
 				lead = mark
@@ -86,6 +89,9 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 		}
 	}
 	hint := "↑↓ enter choose · v see all · esc cancel"
+	if inner < ansi.StringWidth(hint) {
+		hint = "↑↓ enter · v all · esc cancel" // the keys that matter, where the full wording does not fit
+	}
 	if len(p.Options) == 0 {
 		hint = "nothing to choose · v see all · esc cancel"
 	}
@@ -125,10 +131,29 @@ func permissionBox(s core.State, now time.Time, width, room int) []string {
 		}
 		lines = append(lines, styled(faint, l))
 	}
-	lines = append(lines, fixedLines(p.FixedArgs, def, inner)...)
+	lines = append(lines, capLines(fixedLines(p.FixedArgs, def, inner), 2, inner)...)
 	lines = append(lines, opts...)
 	lines = append(lines, styled(faint, truncate(hint, inner)))
 	return box("permission needed", lines, width)
+}
+
+// titleRows and optionRows bound the rows of a request's title and of each
+// option, so a request always fits the screen with its role, options and
+// keys.
+const (
+	titleRows  = 3
+	optionRows = 2
+)
+
+// capLines is lines cut to n, with the last one ending in an ellipsis when
+// something was cut.
+func capLines(lines []string, n, width int) []string {
+	if len(lines) <= n {
+		return lines
+	}
+	out := append([]string(nil), lines[:n]...)
+	out[n-1] = ansi.Truncate(ansi.Strip(out[n-1]), max(width-2, 1), "") + " …"
+	return out
 }
 
 // fixedLines says which arguments of the input the operator set, not the
@@ -160,7 +185,7 @@ func defangIf(def bool, lines []string) []string {
 // but never cut.
 func requestLines(e core.Entry, width int) []string {
 	var out []string
-	for i, l := range wrapAll([]string{core.EscapeLabel(e.Text)}, max(width-4, 1)) {
+	for i, l := range wrapAll(defangIf(e.PreviewDefang, []string{core.EscapeLabel(e.Text)}), max(width-4, 1)) {
 		lead := "    "
 		if i == 0 {
 			lead = styled(faint, "  ? ")

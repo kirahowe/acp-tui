@@ -297,3 +297,71 @@ func TestHubInputWidthIsTheBoxDrawn(t *testing.T) {
 		}
 	}
 }
+
+// --- Codex round 2
+
+func longRequest(h core.Hub, title string) core.Hub {
+	return hubStep(h, core.Routed{Session: "s1", Event: core.PermissionAsked{At: t0, Permission: core.Permission{
+		ID: 1, CallID: "c", Name: "send_mail", Title: title, Input: `{"to":"a@example.com","body":"` + strings.Repeat("word ", 40) + `"}`,
+		Options: []core.PermOption{{ID: "a", Name: "Allow", Kind: core.AllowOnce}, {ID: "r", Name: "Reject", Kind: core.RejectOnce}}}}})
+}
+
+// A request with a 500 character title still shows whose it is, the
+// options and the keys, or, in a window too small for that, says so.
+func TestHubLongRequestTitleKeepsTheRoleAndTheOptionsOnScreen(t *testing.T) {
+	title := strings.Repeat("send everything ", 32)[:500]
+	h := longRequest(hubFixture(), title)
+	for _, size := range [][2]int{{40, 16}, {40, 14}, {60, 20}, {100, 24}, {34, 12}} {
+		w, rows := size[0], size[1]
+		f := HubView(h, "", "", t0.Add(time.Second), w, rows)
+		got := ansi.Strip(f.Content)
+		if got = strings.TrimSpace(got); len(strings.Split(f.Content, "\n")) != rows {
+			t.Errorf("%dx%d: %d rows", w, rows, len(strings.Split(f.Content, "\n")))
+		}
+		if f.TooSmall {
+			t.Errorf("%dx%d: too small, but a request fits there:\n%s", w, rows, got)
+			continue
+		}
+		for _, want := range []string{"Dev", "Allow (y)", "Reject (n)", "esc cancel"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%dx%d: %q is not on screen:\n%s", w, rows, want, got)
+			}
+		}
+	}
+	// Where it does not fit, the frame says so and names the role.
+	for _, size := range [][2]int{{40, 8}, {40, 5}, {20, 6}, {40, 2}} {
+		f := HubView(h, "", "", t0.Add(time.Second), size[0], size[1])
+		if !f.TooSmall {
+			t.Errorf("%v: a request cannot be shown whole here:\n%s", size, ansi.Strip(f.Content))
+		}
+		if n := len(strings.Split(f.Content, "\n")); n != size[1] {
+			t.Errorf("%v: %d rows", size, n)
+		}
+		if size[1] >= 4 && !strings.Contains(ansi.Strip(f.Content), "too small") {
+			t.Errorf("%v: it does not say so:\n%s", size, ansi.Strip(f.Content))
+		}
+	}
+}
+
+// The single-session view has the same bound.
+func TestInlineLongRequestTitleIsBounded(t *testing.T) {
+	title := strings.Repeat("send everything ", 32)[:500]
+	s, _ := core.Reduce(core.State{}, core.Connected{At: t0})
+	s, _ = core.Reduce(s, core.Submit{At: t0, Text: "go"})
+	s, _ = core.Reduce(s, core.PermissionAsked{At: t0, Permission: core.Permission{ID: 1, Name: "send_mail", Title: title, Input: `{"a":1}`,
+		Options: []core.PermOption{{ID: "a", Name: "Allow", Kind: core.AllowOnce}, {ID: "r", Name: "Reject", Kind: core.RejectOnce}}}})
+	f := View(s, "› ", "", t0.Add(time.Second), 39, 16)
+	got := ansi.Strip(f.Content)
+	if f.TooSmall || !strings.Contains(got, "Allow (y)") || !strings.Contains(got, "Reject (n)") || !strings.Contains(got, "permission needed") {
+		t.Errorf("a 500 character title pushed the request off the screen:\n%s", got)
+	}
+	if f := View(s, "› ", "", t0.Add(time.Second), 39, 5); !f.TooSmall || !strings.Contains(ansi.Strip(f.Content), "too small") {
+		t.Errorf("no word that the window is too small:\n%s", ansi.Strip(f.Content))
+	}
+	// v puts the whole title in the transcript.
+	s, _ = core.Reduce(s, core.PermissionShowAll{At: t0})
+	all := ansi.Strip(strings.Join(Entries(nil, s.Entries, 80, t0), " "))
+	if !strings.Contains(strings.Join(strings.Fields(all), ""), strings.Join(strings.Fields(title), "")) {
+		t.Errorf("the full title is not reachable:\n%s", all)
+	}
+}

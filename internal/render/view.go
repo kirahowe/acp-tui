@@ -18,6 +18,10 @@ type Frame struct {
 	// go into scrollback; after them the transcript resumes at PrintTo.
 	Print   []string
 	PrintTo core.Cursor
+	// TooSmall says the window cannot show the request on offer whole with
+	// its keys and the status line; the frame says so, and the keys that
+	// approve are off.
+	TooSmall bool
 	// DetailMax is how far the pane's detail view can scroll as drawn.
 	DetailMax int
 }
@@ -115,6 +119,16 @@ func view(s core.State, input, hint string, now time.Time, width, height int, ov
 	bottom = append(bottom, StatusText(st, hint, now, width))
 
 	rows := max(height-1, 1)
+	if len(s.Asks) > 0 && len(bottom) > rows {
+		lines := wrap(styled(bold, "Window too small to show this request."), width)
+		for _, l := range wrap("Make it larger. Allowing is off until then; esc still cancels.", width) {
+			lines = append(lines, styled(faint, l))
+		}
+		for len(lines) < rows {
+			lines = append([]string{""}, lines...)
+		}
+		return Frame{PrintTo: s.Printed, Content: strings.Join(lines[len(lines)-rows:], "\n"), TooSmall: true}
+	}
 	room := rows - len(bottom)
 	if over != nil {
 		// Nothing goes to scrollback while the pane covers the transcript.

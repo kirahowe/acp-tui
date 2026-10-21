@@ -78,6 +78,17 @@ func (p Permission) Label() string {
 	return "tool call"
 }
 
+// Heading is the whole of what the request is called: the tool's name and,
+// when it has one, its title. The request box cuts a long one; the full
+// text is what v puts in the transcript.
+func (p Permission) Heading() string {
+	h := p.Label()
+	if strings.TrimSpace(p.Name) != "" && strings.TrimSpace(p.Title) != "" && p.Title != h {
+		h += " · " + p.Title
+	}
+	return h
+}
+
 // ArmDelay is how long a request is on screen before a key can answer it
 // other than by cancelling. The request can appear while the person is
 // typing, and a y or an enter meant for the input must not approve a call.
@@ -207,11 +218,11 @@ func (r *reducer) permission(e Event) {
 			s.Pick = ((s.Pick+e.Delta)%m + m) % m
 		}
 	case PermissionConfirm:
-		if s.armed(e.At) && s.Pick >= 0 && s.Pick < len(s.Asks[0].Options) {
+		if s.armed(e.At) && !s.TooSmall && s.Pick >= 0 && s.Pick < len(s.Asks[0].Options) {
 			r.answer(e.At, s.Pick)
 		}
 	case PermissionQuick:
-		if s.armed(e.At) {
+		if s.armed(e.At) && !s.TooSmall {
 			if i := PickKind(s.Asks[0].Options, e.Kind); i >= 0 {
 				r.answer(e.At, i)
 			}
@@ -223,7 +234,7 @@ func (r *reducer) permission(e Event) {
 	case PermissionShowAll:
 		if len(s.Asks) > 0 {
 			p := s.Asks[0]
-			r.add(Entry{Kind: Request, Text: p.Label(), Detail: p.Input, Preview: p.Preview,
+			r.add(Entry{Kind: Request, Text: p.Heading(), Detail: p.Input, Preview: p.Preview,
 				PreviewDefang: p.Shown().Union(s.Labels).Contaminated, Final: true})
 		}
 	}

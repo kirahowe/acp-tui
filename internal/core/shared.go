@@ -9,6 +9,16 @@ import "time"
 // Its transcript is always the full-screen view, which the hub draws,
 // so nothing goes to scrollback and the view never closes.
 
+// Viewport says whether the window is too small to show a permission
+// request whole. While it is, the keys that approve do nothing (cancelling
+// still works): a request that cannot be read cannot be allowed.
+type Viewport struct {
+	At       time.Time
+	TooSmall bool
+}
+
+func (e Viewport) at() time.Time { return e.At }
+
 // Events about a conversation that the hub tells it.
 type (
 	// UserChunk is text the agent says the user wrote: relay replays

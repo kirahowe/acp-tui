@@ -45,6 +45,10 @@ type HubFrame struct {
 	DetailMax      int
 	Cursor         bool
 	InputX, InputY int
+	// TooSmall says the window cannot show the role's name, the request
+	// on offer, its options and the status line together. The frame then
+	// says so instead, and the keys that approve are off.
+	TooSmall bool
 }
 
 // HubKeys is what the keys do in hub mode, in the list of keys.
@@ -422,6 +426,19 @@ func hubMainAt(h core.Hub, input, hint string, now time.Time, width, height int,
 		}
 		bottom = append(bottom, box("", strings.Split(input, "\n"), width)...)
 		showInput = true
+	}
+	if len(s.Asks) > 0 && !h.EndAsk && 1+len(bottom)+1 > height {
+		lines := []string{truncate(head, width)}
+		for _, l := range wrap(styled(bold, "Window too small to show this request."), width) {
+			lines = append(lines, l)
+		}
+		for _, l := range wrap("Make it larger. Allowing is off until then; esc still cancels.", width) {
+			lines = append(lines, styled(faint, l))
+		}
+		for len(lines) < height {
+			lines = append(lines, "")
+		}
+		return HubFrame{Content: strings.Join(lines[:height], "\n"), TooSmall: true}
 	}
 	var status string
 	if conv == nil {

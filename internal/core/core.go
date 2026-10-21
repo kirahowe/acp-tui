@@ -309,6 +309,10 @@ type State struct {
 	// shows.
 	Transcript Transcript
 	Help       bool
+	// TooSmall says the window cannot show the request on offer whole, with
+	// the keys that answer it; those keys then do nothing. The shell sets it
+	// from what it drew (Viewport).
+	TooSmall bool
 	// Shared says this is one conversation among several on a hub
 	// connection; see shared.go.
 	Shared bool
@@ -378,6 +382,8 @@ func (r *reducer) apply(e Event) {
 		r.permission(e)
 	case LabelsSeen, PermissionMove, PermissionConfirm, PermissionQuick, PermissionCancel, PermissionShowAll:
 		r.permission(e)
+	case Viewport:
+		s.TooSmall = e.TooSmall
 	case UserChunk, ConvAttached, Settled, RemoteIdle, ReplayEnd, Blurred, Focused:
 		r.shared(e)
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:

@@ -54,6 +54,13 @@ func (m Model) updateHub(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// The text area is the inside of the box drawn, whatever the layout is
 	// now: the pane beside it, the sidebar, a narrow screen.
 	m.input.SetWidth(render.HubInputWidth(m.hub, m.width()))
+	if c := m.hub.Focused(); m.hub.TooSmall || (c != nil && len(c.State.Asks) > 0) {
+		// Whether the window shows the request whole decides whether the
+		// keys that approve do anything.
+		if f := m.hubFrame(now); f.TooSmall != m.hub.TooSmall {
+			m.hub, _ = core.ReduceHub(m.hub, core.Viewport{At: now, TooSmall: f.TooSmall})
+		}
+	}
 	cmds = append(cmds, m.hubTick(now), m.stop())
 	return m, tea.Batch(cmds...)
 }
@@ -163,6 +170,14 @@ func (m *Model) hubKeyBody(k tea.KeyPressMsg, now time.Time) ([]core.Event, tea.
 		return nil, nil
 	}
 	st := m.focusedState()
+	// Scrolling is never the request's: a long one is read by scrolling to
+	// what `v` put in the transcript. Only the approval keys are its.
+	switch k.String() {
+	case "pgup":
+		return one(m.scroll(core.TranscriptPageUp, now))
+	case "pgdown":
+		return one(m.scroll(core.TranscriptPageDown, now))
+	}
 	if len(st.Asks) > 0 {
 		if e := askKey(ClassifyAsk(k), now); e != nil {
 			return one(e)
@@ -175,12 +190,6 @@ func (m *Model) hubKeyBody(k tea.KeyPressMsg, now time.Time) ([]core.Event, tea.
 			return one(e)
 		}
 		return nil, nil
-	}
-	switch k.String() {
-	case "pgup":
-		return one(m.scroll(core.TranscriptPageUp, now))
-	case "pgdown":
-		return one(m.scroll(core.TranscriptPageDown, now))
 	}
 	switch Classify(k, empty) {
 	case Send:

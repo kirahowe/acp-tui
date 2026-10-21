@@ -106,9 +106,21 @@ type Hub struct {
 	// Notice is a note for the status line, cleared by the next key.
 	Notice string
 	Help   bool
+	// TooSmall: see State.TooSmall. Blanks hold the paste state of roles
+	// with no conversation yet, so what is pasted there is kept.
+	TooSmall bool
+	Blanks   []Blank
 	// Exit is why the connection went away, once Gone.
 	Exit string
 	Gone bool
+}
+
+// Blank is the state of pastes made to a role that has no conversation:
+// they wait, as placeholders in its draft, for the first message to start
+// one.
+type Blank struct {
+	Role  string
+	State State
 }
 
 // NewHub is the state at start: open names the role to focus, or "".
@@ -300,12 +312,67 @@ func ReduceHub(h Hub, e Event) (Hub, []Effect) {
 	h.Roles = slices.Clone(h.Roles)
 	h.Convs = slices.Clone(h.Convs)
 	h.Ended = slices.Clone(h.Ended)
+	h.Blanks = slices.Clone(h.Blanks)
 	r := &hubReducer{h: h}
+	if cancelsTrust(e) {
+		r.clearTrust()
+	}
 	before := h.onScreen()
 	r.apply(e)
 	r.settle(before, e.at())
 	r.markSeen(e.at())
 	return r.h, r.fx
+}
+
+// cancelsTrust says an event ends a ctrl+y trust for the next paste: any
+// key but the paste itself. Events that only report what happened
+// elsewhere do not.
+func cancelsTrust(e Event) bool {
+	switch e.(type) {
+	case Tick, TerminalReady, Printed, HubConnected, RosterUpdate, Routed, Attached, PermissionSettled, Replayed,
+		ConversationEnded, CardsChanged, AgentExited, Pasted, ToggleTrustedPaste, Viewport:
+		return false
+	}
+	return true
+}
+
+// clearTrust disarms a trusted paste everywhere. The trust was for the
+// next paste, whatever becomes of that one.
+func (r *hubReducer) clearTrust() {
+	for i := range r.h.Convs {
+		r.h.Convs[i].State.TrustNext = false
+	}
+	for i := range r.h.Blanks {
+		r.h.Blanks[i].State.TrustNext = false
+	}
+}
+
+// blank is the paste state for a role with no conversation, made when
+// asked.
+func (r *hubReducer) blank(role string) *Blank {
+	for i := range r.h.Blanks {
+		if r.h.Blanks[i].Role == role {
+			return &r.h.Blanks[i]
+		}
+	}
+	r.h.Blanks = append(r.h.Blanks, Blank{Role: role})
+	return &r.h.Blanks[len(r.h.Blanks)-1]
+}
+
+// adoptBlank gives the conversation just made for a role the pastes
+// waiting for it.
+func (r *hubReducer) adoptBlank(role string) {
+	for i, b := range r.h.Blanks {
+		if b.Role != role {
+			continue
+		}
+		if j := r.convIndex(role); j >= 0 {
+			s := &r.h.Convs[j].State
+			s.Pastes, s.NextPaste = b.State.Pastes, b.State.NextPaste
+		}
+		r.h.Blanks = slices.Delete(r.h.Blanks, i, i+1)
+		return
+	}
 }
 
 // onScreen is the session of the conversation the operator can see the
@@ -337,6 +404,7 @@ func (r *hubReducer) settle(before string, at time.Time) {
 	if after == before {
 		return
 	}
+	r.clearTrust()
 	if i := r.sessionIndex(before); i >= 0 {
 		r.toConv(i, Blurred{At: at}, false)
 	}
@@ -376,7 +444,7 @@ func (r *hubReducer) apply(e Event) {
 	h := &r.h
 	switch e.(type) {
 	case Tick, TerminalReady, Printed, HubConnected, RosterUpdate, Routed, Attached, PermissionSettled, Replayed,
-		ConversationEnded, CardsChanged, AgentExited:
+		ConversationEnded, CardsChanged, AgentExited, Viewport:
 	default:
 		h.Notice = "" // a key was pressed
 	}
@@ -471,17 +539,39 @@ func (r *hubReducer) apply(e Event) {
 		}
 	case ToggleHelp:
 		h.Help = !h.Help
-	case Pasted, ToggleTrustedPaste:
-		if h.Help || h.EndAsk {
-			return // not at the input; the trust of an armed paste is spent as in a single session
+	case Viewport:
+		h.TooSmall = e.TooSmall
+	case PermissionConfirm, PermissionQuick:
+		if !h.TooSmall {
+			r.toFocused(e)
 		}
-		r.toFocused(e)
+	case Pasted, ToggleTrustedPaste:
+		if h.Help || h.EndAsk || h.List || h.Focus == "" {
+			if _, pasted := e.(Pasted); pasted {
+				r.clearTrust() // dropped, and the trust was for it
+			}
+			return
+		}
+		if h.Focused() != nil {
+			r.toFocused(e)
+			return
+		}
+		// No conversation yet: the paste waits in the role's draft.
+		b := r.blank(h.Focus)
+		var fx []Effect
+		b.State, fx = Reduce(b.State, e)
+		for _, f := range fx {
+			if in, ok := f.(InsertInput); ok {
+				r.emit(in)
+			}
+		}
 	case Submit:
 		if strings.TrimSpace(e.Text) == "" || h.Focus == "" || h.List {
 			return
 		}
 		if h.Focused() == nil {
 			r.ensureAttached(h.Focus, true)
+			r.adoptBlank(h.Focus)
 		}
 		r.toFocused(e)
 	case Interrupt:
