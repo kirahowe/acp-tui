@@ -118,7 +118,7 @@ func TestWireTotal(t *testing.T) {
 	kinds := map[string]string{
 		"agent_message_chunk": "core.TextChunk",
 		"agent_thought_chunk": "core.ThoughtChunk",
-		"user_message_chunk":  "core.Ignored",
+		"user_message_chunk":  "core.UserChunk",
 		"tool_call":           "core.ToolStarted",
 		"tool_call_update":    "core.ToolUpdated",
 		"notice":              "core.Notice",

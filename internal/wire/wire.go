@@ -89,6 +89,9 @@ func Update(n acp.SessionNotification, at time.Time) core.Event {
 	case u.AgentMessageChunk != nil:
 		c := u.AgentMessageChunk
 		return core.TextChunk{At: at, MessageID: messageID(c.MessageId), Text: blockText(c.Content)}
+	case u.UserMessageChunk != nil:
+		c := u.UserMessageChunk
+		return core.UserChunk{At: at, MessageID: messageID(c.MessageId), Text: blockText(c.Content)}
 	case u.AgentThoughtChunk != nil:
 		c := u.AgentThoughtChunk
 		return core.ThoughtChunk{At: at, MessageID: messageID(c.MessageId), Text: blockText(c.Content)}

@@ -309,6 +309,9 @@ type State struct {
 	// shows.
 	Transcript Transcript
 	Help       bool
+	// Shared says this is one conversation among several on a hub
+	// connection; see shared.go.
+	Shared bool
 }
 
 // Reduce applies one event. It never mutates s's slices in place, so a
@@ -375,10 +378,14 @@ func (r *reducer) apply(e Event) {
 		r.permission(e)
 	case LabelsSeen, PermissionMove, PermissionConfirm, PermissionQuick, PermissionCancel, PermissionShowAll:
 		r.permission(e)
+	case UserChunk, ConvAttached, Settled, RemoteIdle, Focused:
+		r.shared(e)
 	case TextChunk, ThoughtChunk, ToolStarted, ToolUpdated, Ignored:
-		if s.Phase == Busy {
-			s.Turn.LastEvent = e.at()
-			s.Turn.Retry = nil
+		if s.Phase == Busy || (s.Shared && s.Phase != Exited) {
+			if s.Phase == Busy {
+				s.Turn.LastEvent = e.at()
+				s.Turn.Retry = nil
+			}
 			r.agentEvent(e)
 		}
 	case Notice:

@@ -66,7 +66,7 @@ func (r *reducer) show(kind *bool) {
 
 func (r *reducer) transcriptKey(e TranscriptKey) {
 	t := &r.s.Transcript
-	if !t.Open {
+	if !t.Open || (e.Action == TranscriptClose && r.s.Shared) {
 		return
 	}
 	d := 0
@@ -93,6 +93,9 @@ func (r *reducer) transcriptKey(e TranscriptKey) {
 // closeTranscript leaves the view, so what needs the person, such as a
 // permission request, is on screen.
 func (r *reducer) closeTranscript() {
+	if r.s.Shared {
+		return // the hub's conversation view is the transcript
+	}
 	r.s.Transcript.Open, r.s.Transcript.Scroll = false, 0
 	r.s.Help = false
 }
