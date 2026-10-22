@@ -438,3 +438,45 @@ func TestHubListScrollsToTheSelectedRole(t *testing.T) {
 		t.Errorf("the sidebar did not scroll:\n%s", side)
 	}
 }
+
+// --- Independent review
+
+// When relay is not running as a service the view says so all the time,
+// in every layout.
+func TestHubSaysWhenConversationsEndWithTheClient(t *testing.T) {
+	h := hubStep(hubFixture(), core.HubConnected{At: t0, KeepsKnown: true, Keeps: false})
+	for _, v := range []struct {
+		name string
+		h    core.Hub
+		w    int
+	}{{"wide conversation", h, 100}, {"narrow conversation", h, 50}, {"narrow list", hubStep(h, core.ToggleList{At: t0}), 50},
+		{"wide list", hubStep(h, core.ToggleList{At: t0}), 100}} {
+		got := ansi.Strip(HubView(v.h, "", "", t0, v.w, 20).Content)
+		if !strings.Contains(strings.Join(strings.Fields(got), " "), "relay service not running") {
+			t.Errorf("%s:\n%s", v.name, got)
+		}
+	}
+	// With the service, or when relay did not say, nothing.
+	for _, ok := range []core.Hub{hubStep(hubFixture(), core.HubConnected{At: t0, KeepsKnown: true, Keeps: true}), hubFixture()} {
+		if got := ansi.Strip(HubView(ok, "", "", t0, 100, 20).Content); strings.Contains(got, "not running") {
+			t.Errorf("a note when there should be none:\n%s", got)
+		}
+	}
+}
+
+// A replay relay cut says so at the top, in the client's words and set
+// apart from the agent's text.
+func TestHubTruncatedReplayIsSaidAtTheTop(t *testing.T) {
+	h := hubStep(hubFixture(), core.Replayed{At: t0, Session: "s1", Truncated: true})
+	got := ansi.Strip(HubView(h, "", "", t0, 80, 20).Content)
+	i, j := strings.Index(got, "earlier history is not shown"), strings.Index(got, "What is on today?")
+	if i < 0 || j < 0 || i > j {
+		t.Errorf("the notice is not above the history:\n%s", got)
+	}
+	if plain := ansi.Strip(HubView(hubStep(hubFixture(), core.Replayed{At: t0, Session: "s1"}), "", "", t0, 80, 20).Content); strings.Contains(plain, "not shown") {
+		t.Errorf("a notice for a whole replay:\n%s", plain)
+	}
+	if styledLine := HubView(h, "", "", t0, 80, 20).Content; !strings.Contains(styledLine, "\x1b[0;2;3m— relay:") {
+		t.Errorf("not styled as relay's own line: %q", styledLine)
+	}
+}

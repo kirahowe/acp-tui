@@ -1040,3 +1040,110 @@ func TestHubTooSmallWindowMakesApprovalInert(t *testing.T) {
 		t.Fatal("single-session answered in a window too small")
 	}
 }
+
+// --- Independent review
+
+func twoWithRequests(t testing.TB) Hub {
+	t.Helper()
+	ask := func(id uint64, call string) PermissionAsked {
+		return PermissionAsked{At: t0, Permission: Permission{ID: id, CallID: call, Options: []PermOption{{ID: "a", Kind: AllowOnce}, {ID: "r", Kind: RejectOnce}}}}
+	}
+	h := loadedHub(t)
+	h, _ = apply(t, h, FocusIndex{At: t0, Index: 1}, Attached{At: t0, Role: "mail", Session: "s2"}, Replayed{At: t0, Session: "s2"},
+		routed("s2", ask(2, "c2")), FocusIndex{At: t0, Index: 0}, routed("s1", ask(1, "c1")))
+	return h
+}
+
+// Quitting only detaches: relay holds a request nobody answered, and
+// agentloop takes "cancelled" as a denial.
+func TestHubQuitNeverAnswersARequest(t *testing.T) {
+	for name, quit := range map[string][]Event{
+		"eof":         {EOF{At: t0}},
+		"ctrl-c":      {Interrupt{At: t0, InputEmpty: true}},
+		"from list":   {ToggleList{At: t0}, Interrupt{At: t0, InputEmpty: true}},
+		"ctrl-d list": {ToggleList{At: t0}, EOF{At: t0}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h, fx := apply(t, twoWithRequests(t), quit...)
+			if answerCount(fx) != 0 {
+				t.Fatalf("answered a request on the way out: %v", fx)
+			}
+			if !slices.Contains(fx, Effect(Quit{})) {
+				t.Fatalf("did not quit: %v", fx)
+			}
+			for _, c := range h.Convs {
+				if len(c.State.Asks) != 1 {
+					t.Fatalf("%s lost its request", c.Session)
+				}
+			}
+		})
+	}
+}
+
+// Ctrl-C with a running turn of ours cancels that turn, in view, and its
+// own requests with it, but never another conversation's.
+func TestHubCtrlCStopsOnlyTheFocusedTurn(t *testing.T) {
+	h := twoWithRequests(t)
+	h, _ = apply(t, h, Submit{At: t0, Text: "go"}) // s1 is now Busy
+	h, fx := apply(t, h, Interrupt{At: t0, InputEmpty: true})
+	if !slices.Contains(fx, Effect(ForSession{Session: "s1", Effect: SendCancel{}})) || slices.Contains(fx, Effect(Quit{})) {
+		t.Fatalf("%v", fx)
+	}
+	if answerCount(fx) != 1 || !slices.Contains(fx, Effect(AnswerPermission{ID: 1, Cancelled: true})) {
+		t.Fatalf("only the focused conversation's request is cancelled: %v", fx)
+	}
+	if len(h.ConvBySession("s2").State.Asks) != 1 {
+		t.Fatal("the other conversation's request was answered")
+	}
+}
+
+func TestHubEndedSessionsAreBounded(t *testing.T) {
+	h := loadedHub(t)
+	for i := 0; i < 500; i++ {
+		h = Hub{Roles: h.Roles, Convs: h.Convs, Ended: h.noteEnded(fmt.Sprint("e", i)), Focus: h.Focus, RosterLoaded: true}
+	}
+	if len(h.Ended) > maxEnded {
+		t.Fatalf("%d sessions remembered", len(h.Ended))
+	}
+	// And the roster prunes what it no longer lists.
+	h.Ended = append(h.Ended, "s1")
+	h, _ = apply(t, h, RosterUpdate{At: t0, Roles: []Role{role("dev", "s1")}})
+	if !slices.Equal(h.Ended, []string{"s1"}) {
+		t.Fatalf("kept %v", h.Ended)
+	}
+}
+
+func TestHubReplayedRemembersWhatWasCut(t *testing.T) {
+	h := loadedHub(t)
+	h, _ = apply(t, h, Replayed{At: t0, Session: "s1", Truncated: true})
+	if !h.Convs[0].Truncated {
+		t.Fatal("not marked")
+	}
+}
+
+// A replay of one big merged chunk is the same conversation as the same
+// text in many small chunks.
+func TestHubMergedReplayChunkEqualsManySmallOnes(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		pieces := rapid.SliceOfN(rapid.SampledFrom([]string{"a ", "b\n\n", "c", "```\n", "x\n", "- i\n", "# h\n\n", "é"}), 1, 12).Draw(t, "pieces")
+		run := func(chunks []string) []Entry {
+			h, _ := apply(t, NewHub("dev"), HubConnected{At: t0}, Attached{At: t0, Role: "dev", Session: "s1"})
+			for _, c := range chunks {
+				h, _ = apply(t, h, routed("s1", TextChunk{At: t0, MessageID: "m", Text: c}))
+			}
+			h, _ = apply(t, h, Replayed{At: t0, Session: "s1"})
+			return h.Convs[0].State.Entries
+		}
+		small := run(pieces)
+		merged := run([]string{strings.Join(pieces, "")})
+		if len(small) != len(merged) {
+			t.Fatalf("pieces %q: %d entries vs %d", pieces, len(small), len(merged))
+		}
+		for i := range small {
+			small[i].Final, merged[i].Final = false, false
+		}
+		if !reflect.DeepEqual(small, merged) {
+			t.Fatalf("pieces %q:\n%+v\n%+v", pieces, small, merged)
+		}
+	})
+}

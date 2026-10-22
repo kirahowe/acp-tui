@@ -125,6 +125,16 @@ func (m Model) Open(role string) Model {
 	return m
 }
 
+// Keeps reports, in hub mode, whether relay said it keeps the
+// conversations when this client goes (known is false when it did not
+// say, or when the agent is not the hub).
+func (m Model) Keeps() (known, keeps bool) {
+	if !m.hubMode {
+		return false, false
+	}
+	return m.hub.KeepsKnown, m.hub.Keeps
+}
+
 // Died reports whether the agent exited on its own, and why.
 func (m Model) Died() (bool, string) {
 	if m.hubMode {

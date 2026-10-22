@@ -17,6 +17,9 @@ const (
 	hubKey = "relay/hub"
 	// roleKey is the _meta key on session/new that names the role.
 	roleKey = "relay/role"
+	// keepsKey says whether the service holds conversations after this
+	// client goes.
+	keepsKey = "relay/keeps"
 
 	MethodRoles        = "_relay/roles"
 	MethodRolesChanged = "_relay/roles/changed"
@@ -41,6 +44,10 @@ func IsHub(init acp.InitializeResponse) bool {
 // HubConnected describes the hub once initialize has answered.
 func HubConnected(init acp.InitializeResponse, at time.Time) core.HubConnected {
 	c := core.HubConnected{At: at, Embedded: init.AgentCapabilities.PromptCapabilities.EmbeddedContext}
+	var keeps bool
+	if strictjson.Unmarshal(init.Meta[keepsKey], &keeps) == nil && len(init.Meta[keepsKey]) > 0 {
+		c.KeepsKnown, c.Keeps = true, keeps
+	}
 	if info := init.AgentInfo; info != nil {
 		c.Agent, c.Version = oneLine(info.Name), oneLine(info.Version)
 		if info.Title != nil {
@@ -163,9 +170,10 @@ func SeenParams(session string, turn int) map[string]any {
 func Replayed(params json.RawMessage, at time.Time) (core.Replayed, bool) {
 	var r struct {
 		SessionID string `json:"sessionId"`
+		Truncated bool   `json:"truncated"`
 	}
 	if strictjson.Unmarshal(params, &r) != nil || r.SessionID == "" {
 		return core.Replayed{}, false
 	}
-	return core.Replayed{At: at, Session: r.SessionID}, true
+	return core.Replayed{At: at, Session: r.SessionID, Truncated: r.Truncated}, true
 }

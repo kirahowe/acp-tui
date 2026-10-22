@@ -94,3 +94,25 @@ func TestReplayed(t *testing.T) {
 		}
 	}
 }
+
+func TestHubConnectedReadsKeeps(t *testing.T) {
+	for meta, want := range map[string][2]bool{`true`: {true, true}, `false`: {true, false}, ``: {false, false}, `"yes"`: {false, false}} {
+		init := acp.InitializeResponse{Meta: map[string]json.RawMessage{"relay/hub": json.RawMessage("1")}}
+		if meta != "" {
+			init.Meta["relay/keeps"] = json.RawMessage(meta)
+		}
+		c := HubConnected(init, t0)
+		if c.KeepsKnown != want[0] || c.Keeps != want[1] {
+			t.Errorf("relay/keeps %s: known %v keeps %v", meta, c.KeepsKnown, c.Keeps)
+		}
+	}
+}
+
+func TestReplayedReadsTruncated(t *testing.T) {
+	for raw, want := range map[string]bool{`{"sessionId":"s","truncated":true}`: true, `{"sessionId":"s","truncated":false}`: false, `{"sessionId":"s"}`: false} {
+		e, ok := Replayed(json.RawMessage(raw), t0)
+		if !ok || e.Truncated != want {
+			t.Errorf("%s: %+v %v", raw, e, ok)
+		}
+	}
+}

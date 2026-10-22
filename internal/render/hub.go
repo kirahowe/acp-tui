@@ -209,6 +209,19 @@ func plural(n int, word string) string {
 	return fmt.Sprintf("%d %ss", n, word)
 }
 
+// EmbeddedNote is what the view says all the time when relay is not
+// running as a service, so conversations end with this client.
+const EmbeddedNote = "relay service not running: conversations end when you close this"
+
+// embeddedNote is the note, or "" when relay keeps the conversations or
+// did not say.
+func embeddedNote(h core.Hub) string {
+	if h.KeepsKnown && !h.Keeps {
+		return EmbeddedNote
+	}
+	return ""
+}
+
 // selected is the index of the role the list shows as selected: the
 // cursor when the list has the keys, else the one in focus. It is 0 for
 // none.
@@ -278,19 +291,27 @@ func listScreen(h core.Hub, now time.Time, width, height int) []string {
 	for _, r := range h.Roles {
 		rows = append(rows, roleRow(h, r, now, width), styled(faint, truncate("  "+describe(h, r, now), width)))
 	}
-	room0 := max(height-1, 0)
-	lines = append(lines, window(rows, 2, selected(h), max(room0-head, 0))...)
+	// The note about the service keeps its rows, whatever the list is.
+	var note []string
+	if n := embeddedNote(h); n != "" {
+		for _, l := range capLines(wrap(n, width), 2, width) {
+			note = append(note, styled(bold, l))
+		}
+	}
+	room := max(height-1, 0)
+	lines = append(lines, window(rows, 2, selected(h), max(room-head-len(note), 0))...)
+	if len(lines) > room-len(note) {
+		lines = lines[:max(room-len(note), 0)]
+	}
+	for len(lines) < room-len(note) {
+		lines = append(lines, "")
+	}
+	lines = append(lines, note...)
 	foot := styled(faint, truncate("enter open · up/down move · ? keys", width))
 	if h.Notice != "" {
 		foot = styled(faint, truncate("! "+oneLine(h.Notice), width))
 	}
-	room := max(height-1, 0)
-	if len(lines) > room {
-		lines = lines[:room]
-	}
-	for len(lines) < room {
-		lines = append(lines, "")
-	}
+	lines = lines[:min(len(lines), room)]
 	return append(lines, foot)
 }
 
@@ -433,6 +454,11 @@ func hubMainAt(h core.Hub, input, hint string, now time.Time, width, height int,
 	// The bottom: queued messages, a note, the input or what replaces it,
 	// and the status line.
 	var bottom []string
+	if n := embeddedNote(h); n != "" {
+		for _, l := range capLines(wrap(n, width), 2, width) {
+			bottom = append(bottom, styled(bold, l))
+		}
+	}
 	for _, q := range s.Queue {
 		first, _, more := strings.Cut(strings.TrimSpace(q), "\n")
 		first = oneLine(first)
@@ -503,6 +529,11 @@ func hubMainAt(h core.Hub, input, hint string, now time.Time, width, height int,
 	default:
 		ex := expand{tools: s.Transcript.Tools, thinking: s.Transcript.Thinking}
 		lines = entriesAs(nil, s.Entries, ex, width, now)
+		if conv.Truncated {
+			// relay's word, not the agent's: set apart by a rule on each
+			// side, in italics, where no agent text is.
+			lines = append([]string{styled(faint|italic, truncate("— relay: earlier history is not shown —", width)), ""}, lines...)
+		}
 		mx = max(len(lines)-room, 0)
 		scroll = min(s.Transcript.Scroll, mx)
 		lines = lines[:len(lines)-scroll]

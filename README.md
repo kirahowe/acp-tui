@@ -220,6 +220,9 @@ the list of roles or the conversation, as on a phone: the conversation's
 first row says `ctrl+g roles`. Without `--open` acp-tui starts on the
 list.
 
+If relay had to drop the oldest history from a replay, the conversation
+starts with "relay: earlier history is not shown".
+
 Each role has at most one live conversation. A role with one is
 attached with its history: relay replays what was said, including your
 own prompts (shown in their boxes), and prompts sent from another device
@@ -262,8 +265,12 @@ Keys, besides the usual ones:
 - page up and page down, or the mouse wheel, scroll; ctrl+t and ctrl+o
   show tool calls and thinking in full, as in the transcript
 - ctrl+c cancels a running turn, including one another device started,
-  and otherwise clears the input or quits. Quitting leaves the
-  conversations running.
+  and otherwise clears the input or quits. Quitting only detaches: it
+  answers no permission request, in any conversation (relay holds an
+  unanswered one and tells you), and the conversations keep running.
+  When relay runs as a service, acp-tui says so as it exits. When it does
+  not (relay says so in `initialize`), the view says "relay service not
+  running: conversations end when you close this" all the time.
 
 The workspace pane (ctrl+x) and the board (b) belong to the conversation
 in focus. In hub mode the pane covers the conversation rather than

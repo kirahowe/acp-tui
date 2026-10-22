@@ -67,6 +67,9 @@ type Conv struct {
 	// Loaded says relay has finished the replay (_relay/replayed), or a
 	// turn of ours has ended, so what is on screen is the latest.
 	Loaded bool
+	// Truncated says relay dropped the oldest history from the replay; the
+	// view says so at the top of the conversation, in its own words.
+	Truncated bool
 	// Closed says what was left open by the replay has been closed, once
 	// the roster reported the conversation idle.
 	Closed bool
@@ -84,9 +87,13 @@ type Hub struct {
 	Connected             bool
 	Agent, Title, Version string
 	Embedded              bool
-	Roles                 []Role
-	RosterLoaded          bool
-	Convs                 []Conv
+	// KeepsKnown says relay told us whether it keeps conversations when this
+	// client goes (_meta["relay/keeps"]); Keeps is the answer. False is
+	// embedded mode: they end when this client closes.
+	KeepsKnown, Keeps bool
+	Roles             []Role
+	RosterLoaded      bool
+	Convs             []Conv
 	// Focus is the role whose conversation is on screen ("" for none).
 	// Last is the role before it. Cursor is the role the list has
 	// selected. List says the list has the keys: on a narrow screen it
@@ -113,6 +120,15 @@ type Hub struct {
 	// Exit is why the connection went away, once Gone.
 	Exit string
 	Gone bool
+}
+
+// maxEnded bounds the sessions remembered as ended or failed.
+const maxEnded = 64
+
+// noteEnded is Ended with a session added, oldest dropped past maxEnded.
+func (h Hub) noteEnded(session string) []string {
+	out := append(slices.Clone(h.Ended), session)
+	return out[max(len(out)-maxEnded, 0):]
 }
 
 // Blank is the state of pastes made to a role that has no conversation:
@@ -198,6 +214,7 @@ type (
 		At                    time.Time
 		Agent, Title, Version string
 		Embedded              bool
+		KeepsKnown, Keeps     bool
 	}
 	// RosterUpdate is the whole roster, from _relay/roles or
 	// _relay/roles/changed. Err is set when the roster could not be had.
@@ -226,8 +243,9 @@ type (
 	}
 	// Replayed is _relay/replayed: the replay of a conversation is over.
 	Replayed struct {
-		At      time.Time
-		Session string
+		At        time.Time
+		Session   string
+		Truncated bool // relay dropped the oldest history; see Conv.Truncated
 	}
 	// ConversationEnded is the answer to ending a conversation.
 	ConversationEnded struct {
@@ -428,6 +446,7 @@ func (r *hubReducer) apply(e Event) {
 	case HubConnected:
 		h.Connected = true
 		h.Agent, h.Title, h.Version, h.Embedded = e.Agent, e.Title, e.Version, e.Embedded
+		h.KeepsKnown, h.Keeps = e.KeepsKnown, e.Keeps
 		if h.Open != "" {
 			r.focus(h.Open, true, e.At)
 		}
@@ -444,6 +463,7 @@ func (r *hubReducer) apply(e Event) {
 	case Replayed:
 		if i := r.sessionIndex(e.Session); i >= 0 {
 			h.Convs[i].Loaded = true
+			h.Convs[i].Truncated = e.Truncated
 			// A call still open when the replay ends is running if the
 			// turn is (it was started on another device and its update will
 			// arrive live). It stops only when the roster says no turn runs;
@@ -554,10 +574,7 @@ func (r *hubReducer) apply(e Event) {
 	case Interrupt:
 		r.interrupt(e)
 	case EOF:
-		for i := range h.Convs {
-			r.cancelAsks(i)
-		}
-		r.emit(Quit{})
+		r.emit(Quit{}) // detach only; see interrupt
 	default:
 		r.toFocused(e)
 	}
@@ -630,10 +647,7 @@ func (r *hubReducer) interrupt(e Interrupt) {
 		return // Ctrl-C clears the line; there is nothing else to stop
 	}
 	if c == nil || h.List {
-		for i := range h.Convs {
-			r.cancelAsks(i)
-		}
-		r.emit(Quit{})
+		r.emit(Quit{}) // detach: a request left unanswered is relay's to hold
 		return
 	}
 	if role := h.RoleByID(h.Focus); c.State.Phase == Idle && e.InputEmpty && role != nil && role.Conv != nil &&
@@ -642,7 +656,17 @@ func (r *hubReducer) interrupt(e Interrupt) {
 		r.emit(ForSession{Session: c.Session, Effect: SendCancel{}})
 		return
 	}
-	r.toFocused(e)
+	st := c.State
+	if (st.Phase == Busy && !st.Turn.Cancelling) || (st.Phase == Idle && !e.InputEmpty) {
+		// A turn of ours is stopped, on purpose and in view (its own
+		// requests are cancelled with it), or the line is cleared.
+		r.toFocused(e)
+		return
+	}
+	// Quitting only detaches. No request in any conversation is answered:
+	// agentloop takes "cancelled" as a denial, and relay holds an
+	// unanswered request for the operator and tells them.
+	r.emit(Quit{})
 }
 
 // move focuses the role delta places from the one in focus, wrapping.
@@ -763,7 +787,7 @@ func (r *hubReducer) attached(e Attached) {
 		}
 		if e.Session != "" {
 			// Not live any more, whatever a roster still in flight says.
-			h.Ended = append(h.Ended, e.Session)
+			h.Ended = h.noteEnded(e.Session)
 		}
 		h.Notice = "could not open the conversation: " + oneLineText(e.Err)
 		return
@@ -808,7 +832,7 @@ func (r *hubReducer) ended(e ConversationEnded) {
 	if i := r.sessionIndex(e.Session); i >= 0 {
 		h.Convs = slices.Delete(h.Convs, i, i+1)
 	}
-	h.Ended = append(h.Ended, e.Session)
+	h.Ended = h.noteEnded(e.Session)
 	h.EndAsk = false
 	h.Notice = "conversation ended"
 }
@@ -837,6 +861,11 @@ func (r *hubReducer) roster(e RosterUpdate) {
 	old := h.Roles
 	h.Roles = slices.Clone(e.Roles)
 	h.RosterLoaded = true
+	// A session the roster no longer lists cannot come back from a stale
+	// roster, so it need not be remembered.
+	h.Ended = slices.DeleteFunc(slices.Clone(h.Ended), func(s string) bool {
+		return !slices.ContainsFunc(e.Roles, func(r Role) bool { return r.Conv != nil && r.Conv.Session == s })
+	})
 	r.clampCursor()
 	r.reconcile(old)
 	if h.Focus != "" && h.RoleByID(h.Focus) == nil {

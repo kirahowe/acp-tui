@@ -83,6 +83,13 @@ func run(args []string) int {
 		os.Stderr.Write(tail.bytes())
 		return 1
 	}
+	if known, keeps := final.(ui.Model).Keeps(); known {
+		if keeps {
+			fmt.Fprintln(os.Stderr, "acp-tui: conversations keep running in the relay service")
+		} else {
+			fmt.Fprintln(os.Stderr, "acp-tui: relay service not running: the conversations ended")
+		}
+	}
 	return 0
 }
 

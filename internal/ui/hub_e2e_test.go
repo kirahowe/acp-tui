@@ -477,3 +477,53 @@ func TestHubCtrlYTrustsTheLatestPasteInTheInput(t *testing.T) {
 		return strings.Contains(s, "trusted #2]") && !strings.Contains(s, "untrusted #2]") && strings.Contains(s, "untrusted #1]")
 	})
 }
+
+// --- Independent review
+
+func TestHubEmbeddedModeIsSaidAllTheTime(t *testing.T) {
+	cfg := threeRoles()
+	cfg.Embedded = true
+	h := startHub(t, cfg, 100, 24, "dev")
+	h.waitScreen("the note", func(s string) bool {
+		return strings.Contains(strings.Join(strings.Fields(s), " "), "relay service not running")
+	})
+	h.keys(ctrlN)
+	h.waitScreen("still there", func(s string) bool {
+		return strings.Contains(strings.Join(strings.Fields(s), " "), "relay service not running")
+	})
+}
+
+func TestHubTruncatedReplayShowsRelaysNotice(t *testing.T) {
+	cfg := threeRoles()
+	cfg.Roles[0].Live.Truncated = true
+	h := startHub(t, cfg, 100, 24, "dev")
+	h.waitScreen("the notice", contains("earlier history is not shown"))
+}
+
+// The roster learns a turn ended a moment after the answer: a prompt sent
+// in between is queued, not refused, and the next one still goes.
+func TestHubPromptsAcrossTheRosterLagAreNotRefused(t *testing.T) {
+	h := startHub(t, threeRoles(), 100, 24, "dev")
+	h.waitScreen("dev", contains("hello from dev"))
+	h.keys("one\r")
+	h.waitScreen("first echo", contains("echo: one"))
+	h.keys("two\r")
+	h.waitScreen("second echo", contains("echo: two"))
+	if got := h.logged("refused"); len(got) != 0 {
+		t.Fatalf("the hub refused a prompt: %v", got)
+	}
+}
+
+func TestHubQuitLeavesRequestsUnanswered(t *testing.T) {
+	h := startHub(t, threeRoles(), 100, 24, "dev")
+	h.waitScreen("dev", contains("hello from dev"))
+	h.say("ask dev")
+	h.waitScreen("the request", contains("permission needed"))
+	h.keys(ctrlG)
+	h.waitScreen("the list", contains("News"))
+	h.keys("\x03") // ctrl+c from the list quits
+	h.waitDone()
+	if got := h.logged("permission "); len(got) != 0 {
+		t.Fatalf("quitting answered the request: %v", got)
+	}
+}
