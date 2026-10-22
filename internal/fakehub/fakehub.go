@@ -56,6 +56,9 @@ import (
 // Config is the hub's starting state.
 type Config struct {
 	Roles []RoleConfig `json:"roles"`
+	// Embedded plays relay with no service running: initialize says
+	// "relay/keeps": false.
+	Embedded bool `json:"embedded"`
 }
 
 // RoleConfig is one role.
@@ -71,8 +74,10 @@ type RoleConfig struct {
 
 // Live is a conversation the role already has.
 type Live struct {
-	Unread  bool   `json:"unread"`
-	History []Said `json:"history"`
+	// Truncated makes the replay end with "truncated": true.
+	Truncated bool   `json:"truncated"`
+	Unread    bool   `json:"unread"`
+	History   []Said `json:"history"`
 }
 
 // Said is one entry of a conversation's history.
@@ -91,6 +96,8 @@ type conv struct {
 	activity   time.Time
 	approvals  int
 	attached   bool
+	truncated  bool
+	busy       bool // a turn is running or queued: the next prompt is refused
 	cancel     chan struct{}
 	finish     chan struct{}
 	pendingAsk *ask
@@ -117,17 +124,22 @@ type Hub struct {
 	subscribe bool
 	unbusy    chan struct{} // closed and replaced when a role stops being busy
 	now       func() time.Time
+	keeps     bool
+	// lag is how long after a prompt's answer the roster says the turn
+	// ended, as relay's does.
+	lag time.Duration
 }
 
 // New returns a hub with the config's roles. log receives one line per
 // client action.
 func New(cfg Config, log io.Writer) *Hub {
-	h := &Hub{log: log, unbusy: make(chan struct{}), now: time.Now}
+	h := &Hub{log: log, unbusy: make(chan struct{}), now: time.Now, keeps: !cfg.Embedded, lag: 30 * time.Millisecond}
 	for _, rc := range cfg.Roles {
 		r := &role{RoleConfig: rc}
 		if rc.Live != nil {
 			c := h.newConv(r)
 			c.history = append(c.history, rc.Live.History...)
+			c.truncated = rc.Live.Truncated
 			c.turns = len(rc.Live.History) / 2
 			if rc.Live.Unread {
 				c.seen = c.turns - 1
@@ -231,7 +243,7 @@ func (h *Hub) Initialize(context.Context, acp.InitializeRequest) (acp.Initialize
 			PromptCapabilities:  acp.PromptCapabilities{EmbeddedContext: true},
 			SessionCapabilities: acp.SessionCapabilities{List: &acp.SessionListCapabilities{}},
 		},
-		Meta: map[string]json.RawMessage{"relay/hub": json.RawMessage("1")},
+		Meta: map[string]json.RawMessage{"relay/hub": json.RawMessage("1"), "relay/keeps": json.RawMessage(fmt.Sprint(h.keeps))},
 	}, nil
 }
 
@@ -255,8 +267,11 @@ func (h *Hub) replayed(c *conv) {
 	h.mu.Lock()
 	conn := h.conn
 	h.mu.Unlock()
+	h.mu.Lock()
+	trunc := c.truncated
+	h.mu.Unlock()
 	if conn != nil {
-		_ = conn.NotifyExtension(context.Background(), "_relay/replayed", map[string]any{"sessionId": c.session})
+		_ = conn.NotifyExtension(context.Background(), "_relay/replayed", map[string]any{"sessionId": c.session, "truncated": trunc})
 	}
 }
 
@@ -284,7 +299,9 @@ func (h *Hub) NewSession(_ context.Context, req acp.NewSessionRequest) (acp.NewS
 	c.attached = true
 	h.mu.Unlock()
 	h.logf("new %s attached=false", id)
-	time.AfterFunc(30*time.Millisecond, h.notifyRoster)
+	// A fresh conversation has an empty replay, and it ends with the marker
+	// too.
+	time.AfterFunc(30*time.Millisecond, func() { h.replayed(c); h.notifyRoster() })
 	return acp.NewSessionResponse{SessionId: acp.SessionId(c.session)}, nil
 }
 
@@ -353,6 +370,12 @@ func (h *Hub) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptResp
 		h.mu.Unlock()
 		return acp.PromptResponse{}, &acp.RequestError{Code: -32602, Message: "no such session"}
 	}
+	if c.busy {
+		h.mu.Unlock()
+		h.logf("refused %s", req.SessionId)
+		return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "a turn is already running or queued"}
+	}
+	c.busy = true
 	cancel := make(chan struct{})
 	c.cancel = cancel
 	c.finish = make(chan struct{})
@@ -371,7 +394,7 @@ func (h *Hub) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptResp
 		select {
 		case <-wake:
 		case <-cancel:
-			h.setTurn(c, "idle")
+			h.endTurn(c)
 			return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
 		}
 	}
@@ -384,6 +407,7 @@ func (h *Hub) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptResp
 	if strings.HasPrefix(text, "ask") {
 		outcome, err := h.askPermission(ctx, c, "send_mail")
 		if err != nil {
+			h.endTurn(c)
 			return acp.PromptResponse{}, err
 		}
 		reply = "permission " + outcome
@@ -411,8 +435,17 @@ func (h *Hub) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptResp
 	c.turns++
 	c.cancel = nil
 	h.mu.Unlock()
-	h.setTurn(c, "idle")
+	h.endTurn(c)
 	return acp.PromptResponse{StopReason: stop}, nil
+}
+
+// endTurn frees the conversation for the next prompt at once and tells the
+// roster a moment later, after the prompt's answer, as relay does.
+func (h *Hub) endTurn(c *conv) {
+	h.mu.Lock()
+	c.busy = false
+	h.mu.Unlock()
+	time.AfterFunc(h.lag, func() { h.setTurn(c, "idle") })
 }
 
 // askPermission sends a permission request for c and waits for an answer,
